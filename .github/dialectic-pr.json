@@ -1,0 +1,7 @@
+{
+  "$schema": "https://unpkg.com/@dialectic-pr/core/config/dialectic-pr-schema.json",
+  "model": "claude-sonnet-4-20250514",
+  "exclude_patterns": [],
+  "false_positive_patterns": [],
+  "framework_specific": {}
+}
