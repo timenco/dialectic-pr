@@ -1,0 +1,66 @@
+{
+  "$schema": "https://unpkg.com/@dialectic-pr/core/config/dialectic-pr-schema.json",
+  "model": "claude-sonnet-4-20250514",
+  "exclude_patterns": [
+    "**/*.lock",
+    "**/*.min.js",
+    "**/*.bundle.js",
+    "**/dist/**",
+    "**/build/**",
+    "**/coverage/**",
+    "**/.next/**",
+    "**/node_modules/**",
+    "**/*.map",
+    "**/*.log"
+  ],
+  "strategies": {
+    "small": {
+      "maxTokens": 16000
+    },
+    "medium": {
+      "maxTokens": 12000
+    },
+    "large": {
+      "maxTokens": 8000
+    },
+    "xlarge": {
+      "maxTokens": 4000
+    }
+  },
+  "false_positive_patterns": [
+    {
+      "id": "nestjs-typeorm-safe",
+      "category": "sql-injection",
+      "explanation": "TypeORM QueryBuilder with parameterized queries is safe from SQL injection",
+      "falsePositiveIndicators": [
+        "SQL injection",
+        "parameterized query",
+        "user input not sanitized"
+      ]
+    },
+    {
+      "id": "nestjs-logger-not-error",
+      "category": "error-handling",
+      "explanation": "Using Logger.log() for non-error cases is acceptable in NestJS",
+      "falsePositiveIndicators": [
+        "error handling",
+        "should use try-catch",
+        "missing error handling"
+      ]
+    }
+  ],
+  "framework_specific": {
+    "nestjs": {
+      "priority_modules": [
+        "auth",
+        "payments",
+        "billing",
+        "security"
+      ]
+    },
+    "nextjs": {
+      "app_router": true,
+      "check_client_components": true
+    }
+  }
+}
