@@ -1,0 +1,59 @@
+diff --git a/src/auth/auth.controller.ts b/src/auth/auth.controller.ts
+index abc123..def456 100644
+--- a/src/auth/auth.controller.ts
++++ b/src/auth/auth.controller.ts
+@@ -1,10 +1,15 @@
+ import { Controller, Post, Body } from '@nestjs/common';
+ import { AuthService } from './auth.service';
++import { LoginDto } from './dto/login.dto';
+
+ @Controller('auth')
+ export class AuthController {
+   constructor(private authService: AuthService) {}
+
+   @Post('login')
+-  async login(@Body() body: any) {
+-    return this.authService.login(body.email, body.password);
++  async login(@Body() loginDto: LoginDto) {
++    // Validate input
++    if (!loginDto.email || !loginDto.password) {
++      throw new Error('Email and password are required');
++    }
++    return this.authService.login(loginDto.email, loginDto.password);
+   }
+ }
+diff --git a/src/auth/dto/login.dto.ts b/src/auth/dto/login.dto.ts
+new file mode 100644
+index 0000000..9876543
+--- /dev/null
++++ b/src/auth/dto/login.dto.ts
+@@ -0,0 +1,12 @@
++import { IsEmail, IsString, MinLength } from 'class-validator';
++
++export class LoginDto {
++  @IsEmail()
++  email: string;
++
++  @IsString()
++  @MinLength(8)
++  password: string;
++}
++
+diff --git a/src/auth/auth.service.ts b/src/auth/auth.service.ts
+index 111222..333444 100644
+--- a/src/auth/auth.service.ts
++++ b/src/auth/auth.service.ts
+@@ -10,7 +10,11 @@ export class AuthService {
+   ) {}
+
+   async login(email: string, password: string) {
+-    const user = await this.userRepository.findOne({ where: { email } });
++    // Find user by email
++    const user = await this.userRepository.findOne({
++      where: { email },
++      select: ['id', 'email', 'password', 'role']
++    });
++
+     if (!user) {
+       throw new UnauthorizedException('Invalid credentials');
+     }
