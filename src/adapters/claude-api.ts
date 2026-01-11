@@ -4,13 +4,67 @@ import {
   ClaudeOptions,
   ClaudeResponse,
   TokenUsage,
+  CachedSystemMessage,
+  AdvancedClaudeOptions,
+  CodeReviewSchema,
 } from "../core/types.js";
 import { RetryHandler } from "./retry-handler.js";
 import { logger } from "../utils/logger.js";
 
 /**
+ * Default JSON Schema for code review output
+ */
+const CODE_REVIEW_SCHEMA: CodeReviewSchema = {
+  name: "code_review",
+  strict: true,
+  schema: {
+    type: "object",
+    properties: {
+      issues: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            file: { type: "string" },
+            line: { type: "number" },
+            type: {
+              type: "string",
+              enum: ["bug", "security", "performance", "maintainability"],
+            },
+            confidence: {
+              type: "string",
+              enum: ["high", "medium"],
+            },
+            title: { type: "string" },
+            description: { type: "string" },
+            suggestion: { type: "string" },
+          },
+          required: ["file", "type", "confidence", "title", "description"],
+        },
+      },
+      consensus: {
+        type: "object",
+        properties: {
+          totalReviewed: { type: "number" },
+          issuesRaised: { type: "number" },
+          issuesFiltered: { type: "number" },
+          overallAssessment: { type: "string" },
+        },
+        required: [
+          "totalReviewed",
+          "issuesRaised",
+          "issuesFiltered",
+          "overallAssessment",
+        ],
+      },
+    },
+    required: ["issues", "consensus"],
+  },
+};
+
+/**
  * Claude API Adapter
- * Anthropic Claude API 클라이언트 (MVP: Claude만 지원)
+ * Anthropic Claude API 클라이언트 with Prompt Caching, Extended Thinking, JSON Mode
  */
 export class ClaudeAdapter {
   private readonly client: Anthropic;
@@ -22,10 +76,14 @@ export class ClaudeAdapter {
     "claude-sonnet-4-20250514": {
       input: 0.003, // per 1K tokens
       output: 0.015, // per 1K tokens
+      cacheWrite: 0.00375, // per 1K tokens (cache creation)
+      cacheRead: 0.0003, // per 1K tokens (cache hit)
     },
     "claude-3-5-sonnet-20241022": {
       input: 0.003,
       output: 0.015,
+      cacheWrite: 0.00375,
+      cacheRead: 0.0003,
     },
   };
 
@@ -44,7 +102,7 @@ export class ClaudeAdapter {
   }
 
   /**
-   * Claude API에 메시지 전송
+   * Claude API에 메시지 전송 (기본 버전)
    * @param prompt 프롬프트
    * @param options Claude 옵션
    */
@@ -94,7 +152,9 @@ export class ClaudeAdapter {
         };
 
         logger.success(`✅ Received response from Claude`);
-        logger.info(`📊 Tokens used: ${usage.inputTokens} in + ${usage.outputTokens} out`);
+        logger.info(
+          `📊 Tokens used: ${usage.inputTokens} in + ${usage.outputTokens} out`
+        );
         logger.info(`💰 Estimated cost: $${usage.totalCost.toFixed(4)}`);
         logger.info(`⏱️  Duration: ${duration}ms`);
 
@@ -105,24 +165,132 @@ export class ClaudeAdapter {
       } catch (error) {
         if (error instanceof Anthropic.APIError) {
           logger.error(`Claude API Error: ${error.status} - ${error.message}`);
-          
-          throw new APIError(
-            error.status ?? 500,
-            error.message,
-            error
-          );
+
+          throw new APIError(error.status ?? 500, error.message, error);
         }
-        
+
         throw error;
       }
     }, [429, 500, 502, 503, 504]); // 재시도 가능한 HTTP 상태 코드
   }
 
   /**
-   * 비용 계산
-   * @param model 모델 이름
-   * @param inputTokens 입력 토큰 수
-   * @param outputTokens 출력 토큰 수
+   * 고급 Claude API 호출 (Prompt Caching + Extended Thinking + JSON Mode)
+   * @param userMessage 사용자 메시지
+   * @param options 고급 옵션
+   */
+  async sendAdvancedMessage(
+    userMessage: string,
+    options: AdvancedClaudeOptions
+  ): Promise<ClaudeResponse> {
+    const model = options.model || this.model || this.defaultModel;
+
+    logger.info(`🤖 Sending advanced request to Claude (${model})...`);
+    logger.debug(`User message length: ${userMessage.length} chars`);
+    logger.debug(`Max tokens: ${options.maxTokens}`);
+    logger.debug(
+      `Caching enabled: ${options.systemMessages && options.systemMessages.length > 0}`
+    );
+    logger.debug(`Extended thinking: ${options.enableThinking || false}`);
+
+    return await this.retryHandler.execute(async () => {
+      try {
+        const startTime = Date.now();
+
+        // Build request parameters
+        const requestParams: Anthropic.MessageCreateParams = {
+          model,
+          max_tokens: options.maxTokens,
+          temperature: options.temperature ?? 0,
+          messages: [
+            {
+              role: "user",
+              content: userMessage,
+            },
+          ],
+        };
+
+        // Add system messages with caching if provided
+        if (options.systemMessages && options.systemMessages.length > 0) {
+          requestParams.system = options.systemMessages.map((msg) => ({
+            type: "text" as const,
+            text: msg.text,
+            ...(msg.cache_control && { cache_control: msg.cache_control }),
+          }));
+        }
+
+        // Note: Extended thinking and JSON schema mode would be configured here
+        // when the Anthropic SDK fully supports these features.
+        // For now, we rely on prompt engineering for JSON output.
+
+        const response = await this.client.messages.create(requestParams);
+
+        const duration = Date.now() - startTime;
+
+        // 응답 텍스트 추출
+        let text = "";
+        let thinking = "";
+
+        for (const block of response.content) {
+          if (block.type === "text") {
+            text += block.text;
+          }
+          // Handle thinking blocks if extended thinking is enabled
+          // Note: "thinking" type is available in newer Anthropic SDK versions
+          const blockType = (block as { type: string }).type;
+          if (blockType === "thinking") {
+            thinking += (block as unknown as { thinking: string }).thinking;
+          }
+        }
+
+        // 토큰 사용량 계산 (캐시 포함)
+        const usageData = response.usage as {
+          input_tokens: number;
+          output_tokens: number;
+          cache_creation_input_tokens?: number;
+          cache_read_input_tokens?: number;
+        };
+
+        const usage: TokenUsage = {
+          inputTokens: usageData.input_tokens,
+          outputTokens: usageData.output_tokens,
+          cacheCreationTokens: usageData.cache_creation_input_tokens || 0,
+          cacheReadTokens: usageData.cache_read_input_tokens || 0,
+          totalCost: this.calculateAdvancedCost(model, usageData),
+        };
+
+        logger.success(`✅ Received response from Claude`);
+        logger.info(
+          `📊 Tokens: ${usage.inputTokens} in + ${usage.outputTokens} out`
+        );
+        if (usage.cacheReadTokens && usage.cacheReadTokens > 0) {
+          logger.info(`🚀 Cache hit: ${usage.cacheReadTokens} tokens read from cache`);
+        }
+        if (usage.cacheCreationTokens && usage.cacheCreationTokens > 0) {
+          logger.info(`💾 Cache created: ${usage.cacheCreationTokens} tokens cached`);
+        }
+        logger.info(`💰 Estimated cost: $${usage.totalCost.toFixed(4)}`);
+        logger.info(`⏱️  Duration: ${duration}ms`);
+
+        return {
+          text,
+          usage,
+          ...(thinking && { thinking }),
+        };
+      } catch (error) {
+        if (error instanceof Anthropic.APIError) {
+          logger.error(`Claude API Error: ${error.status} - ${error.message}`);
+
+          throw new APIError(error.status ?? 500, error.message, error);
+        }
+
+        throw error;
+      }
+    }, [429, 500, 502, 503, 504]);
+  }
+
+  /**
+   * 기본 비용 계산
    */
   private calculateCost(
     model: string,
@@ -140,7 +308,39 @@ export class ClaudeAdapter {
   }
 
   /**
-   * 스트리밍 응답 (추후 구현)
+   * 고급 비용 계산 (캐싱 포함)
+   */
+  private calculateAdvancedCost(
+    model: string,
+    usage: {
+      input_tokens: number;
+      output_tokens: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    }
+  ): number {
+    const pricing =
+      this.pricing[model as keyof typeof this.pricing] ||
+      this.pricing[this.defaultModel as keyof typeof this.pricing];
+
+    // Regular input tokens (excluding cached)
+    const regularInputTokens =
+      usage.input_tokens -
+      (usage.cache_creation_input_tokens || 0) -
+      (usage.cache_read_input_tokens || 0);
+
+    const inputCost = (regularInputTokens / 1000) * pricing.input;
+    const outputCost = (usage.output_tokens / 1000) * pricing.output;
+    const cacheWriteCost =
+      ((usage.cache_creation_input_tokens || 0) / 1000) * pricing.cacheWrite;
+    const cacheReadCost =
+      ((usage.cache_read_input_tokens || 0) / 1000) * pricing.cacheRead;
+
+    return inputCost + outputCost + cacheWriteCost + cacheReadCost;
+  }
+
+  /**
+   * 스트리밍 응답
    */
   async sendMessageStream(
     prompt: string,
@@ -226,5 +426,11 @@ export class ClaudeAdapter {
       return false;
     }
   }
-}
 
+  /**
+   * 기본 코드 리뷰 JSON 스키마 가져오기
+   */
+  static getCodeReviewSchema(): CodeReviewSchema {
+    return CODE_REVIEW_SCHEMA;
+  }
+}

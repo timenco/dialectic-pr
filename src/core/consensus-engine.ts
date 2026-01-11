@@ -6,13 +6,163 @@ import {
   ReviewIssue,
   ReviewSummary,
   ReviewMetadata,
+  CachedSystemMessage,
+  FrameworkName,
+  CodeReviewResponse,
 } from "./types.js";
 import { ClaudeAdapter } from "../adapters/claude-api.js";
 import { logger } from "../utils/logger.js";
 
 /**
+ * Agent Consensus Instructions (cacheable - never changes)
+ */
+const AGENT_CONSENSUS_INSTRUCTIONS = `
+SYSTEM: Multi-Persona Code Review
+
+PERSONA_HAWK:
+  role: critical_reviewer
+  objectives:
+    - identify_potential_issues: [bugs, security_vulnerabilities, edge_cases]
+    - focus_areas: [error_handling, type_safety, async_operations]
+    - output: list_of_concerns
+
+PERSONA_OWL:
+  role: pragmatic_validator
+  objectives:
+    - validate_hawk_concerns: true
+    - filter_criteria:
+      - check_false_positive_patterns: true
+      - evaluate_roi: true
+      - assess_production_impact: true
+    - output: filtered_actionable_issues
+
+CONSENSUS_PROCESS:
+  step_1:
+    actor: HAWK
+    action: analyze_diff
+    output: potential_issues[]
+  
+  step_2:
+    actor: OWL
+    action: validate_each_issue
+    criteria:
+      - NOT in false_positive_patterns
+      - production_bug_prevention: true
+      - high_confidence: true
+      - high_roi: true
+    output: consensus_issues[]
+  
+  step_3:
+    action: report_only_consensus_issues
+    format: json_schema
+
+QUALITY_OVER_QUANTITY: true
+ACTIONABLE_FEEDBACK_ONLY: true
+`.trim();
+
+/**
+ * Framework-specific instructions (cacheable - changes per project)
+ */
+const FRAMEWORK_INSTRUCTIONS: Record<FrameworkName, string> = {
+  nestjs: `
+FRAMEWORK: NestJS
+BEST_PRACTICES:
+  dependency_injection:
+    - use_constructor_injection: true
+    - avoid_property_injection: true
+  error_handling:
+    - use_exception_filters: true
+    - throw_http_exceptions: true
+  validation:
+    - use_class_validator_dtos: true
+  architecture:
+    - avoid_circular_dependencies: true
+    - single_responsibility_modules: true
+COMMON_FALSE_POSITIVES:
+  - "throw new Error" is acceptable with AllExceptionsFilter
+  - "new" keyword is intentional for DTOs and entities
+  - Logger dependency injection is project pattern
+`.trim(),
+
+  nextjs: `
+FRAMEWORK: Next.js
+BEST_PRACTICES:
+  components:
+    - prefer_server_components: true
+    - mark_client_components_explicitly: true
+  data_fetching:
+    - use_async_server_components: true
+    - avoid_useeffect_for_data: true
+  api_routes:
+    - validate_all_input: true
+    - use_proper_http_status_codes: true
+  optimization:
+    - use_next_image: true
+    - check_client_js_bundle_size: true
+COMMON_FALSE_POSITIVES:
+  - async Server Components without useEffect is correct
+  - "use client" directive is intentional marking
+`.trim(),
+
+  react: `
+FRAMEWORK: React
+BEST_PRACTICES:
+  hooks:
+    - follow_rules_of_hooks: true
+    - include_all_dependencies: true
+    - cleanup_effects: true
+  performance:
+    - use_memo_appropriately: true
+    - use_callback_for_child_optimization: true
+  state:
+    - colocate_state: true
+    - lift_when_needed: true
+  lists:
+    - stable_unique_keys: true
+COMMON_FALSE_POSITIVES:
+  - intentional dependency omissions with eslint-disable
+  - memo usage is performance optimization
+`.trim(),
+
+  express: `
+FRAMEWORK: Express
+BEST_PRACTICES:
+  middleware:
+    - correct_order: true
+    - error_handlers_last: true
+  async_handling:
+    - use_async_await_with_try_catch: true
+    - or_use_error_middleware: true
+  validation:
+    - validate_all_user_input: true
+  security:
+    - use_helmet: true
+    - implement_rate_limiting: true
+  routing:
+    - use_router_for_modular_routes: true
+COMMON_FALSE_POSITIVES:
+  - middleware order is intentional architecture
+  - custom error handler is standard pattern
+`.trim(),
+
+  vanilla: `
+FRAMEWORK: TypeScript/JavaScript
+BEST_PRACTICES:
+  types:
+    - avoid_any: true
+    - use_proper_types: true
+  async:
+    - handle_promise_rejections: true
+  errors:
+    - throw_typed_errors: true
+  null_safety:
+    - check_null_undefined: true
+`.trim(),
+};
+
+/**
  * Consensus Engine
- * Single-Call Multi-Persona Consensus Review 구현
+ * Single-Call Multi-Persona Consensus Review with Prompt Caching
  */
 export class ConsensusEngine {
   constructor(
@@ -21,7 +171,7 @@ export class ConsensusEngine {
   ) {}
 
   /**
-   * 리뷰 생성
+   * 리뷰 생성 (Advanced API with Caching)
    * @param analysis PR 분석 결과
    * @param strategy 리뷰 전략
    * @param fpPatterns False Positive 패턴 목록
@@ -35,26 +185,31 @@ export class ConsensusEngine {
 
     const startTime = Date.now();
 
-    // 1. Multi-Persona Consensus 프롬프트 구성
-    const prompt = this.buildMultiPersonaPrompt(
-      analysis,
-      strategy,
+    // 1. Build cacheable system messages
+    const systemMessages = this.buildSystemMessages(
+      analysis.context.framework.name,
       fpPatterns
     );
 
-    // 2. Claude API 호출
-    logger.info("🤖 Calling Claude API with Multi-Persona prompt...");
-    const response = await this.claudeAdapter.sendMessage(prompt, {
+    // 2. Build dynamic user message
+    const userMessage = this.buildUserMessage(analysis, strategy);
+
+    // 3. Call Claude API with advanced features
+    logger.info("🤖 Calling Claude API with Prompt Caching enabled...");
+    const response = await this.claudeAdapter.sendAdvancedMessage(userMessage, {
       maxTokens: strategy.maxTokens,
+      systemMessages,
+      enableThinking: true,
+      thinkingBudget: 2000,
     });
 
-    // 3. 응답 파싱
-    const issues = this.parseReviewResponse(response.text);
+    // 4. Parse response
+    const parsed = this.parseReviewResponse(response.text);
 
-    // 4. 요약 생성
-    const summary = this.generateSummary(issues, analysis);
+    // 5. Generate summary
+    const summary = this.generateSummary(parsed.issues, analysis, parsed.consensus);
 
-    // 5. 메타데이터 생성
+    // 6. Build metadata
     const metadata: ReviewMetadata = {
       framework: analysis.context.framework,
       strategy: strategy.name,
@@ -64,263 +219,206 @@ export class ConsensusEngine {
       reviewDuration: Date.now() - startTime,
     };
 
-    logger.success(`✅ Review generated with ${issues.length} issues`);
+    logger.success(`✅ Review generated with ${parsed.issues.length} issues`);
     logger.info(`⏱️  Duration: ${metadata.reviewDuration}ms`);
     logger.info(`💰 Cost: $${response.usage.totalCost.toFixed(4)}`);
 
     return {
-      issues,
+      issues: parsed.issues,
       summary,
       metadata,
     };
   }
 
   /**
-   * Multi-Persona Consensus 프롬프트 구성
+   * Build cacheable system messages
+   * These messages are cached by Claude API to reduce cost and latency
    */
-  private buildMultiPersonaPrompt(
-    analysis: PRAnalysis,
-    strategy: ReviewStrategy,
+  private buildSystemMessages(
+    frameworkName: FrameworkName,
     fpPatterns: FalsePositivePattern[]
+  ): CachedSystemMessage[] {
+    return [
+      // 1. Agent consensus instructions (never changes, always cached)
+      {
+        type: "text",
+        text: AGENT_CONSENSUS_INSTRUCTIONS,
+        cache_control: { type: "ephemeral" },
+      },
+      // 2. False positive patterns (changes per project, cached per session)
+      {
+        type: "text",
+        text: this.formatFPPatterns(fpPatterns),
+        cache_control: { type: "ephemeral" },
+      },
+      // 3. Framework instructions (changes per project, cached per session)
+      {
+        type: "text",
+        text: FRAMEWORK_INSTRUCTIONS[frameworkName] || FRAMEWORK_INSTRUCTIONS.vanilla,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+  }
+
+  /**
+   * Build dynamic user message (not cached)
+   */
+  private buildUserMessage(
+    analysis: PRAnalysis,
+    strategy: ReviewStrategy
   ): string {
     return `
-# AGENT CONSENSUS REVIEW SYSTEM
+REVIEW_CONTEXT:
+  framework: ${analysis.context.framework.name}
+  version: ${analysis.context.framework.version || "unknown"}
+  affected_areas: ${JSON.stringify(analysis.context.affectedAreas)}
+  flags:
+    critical_module: ${analysis.context.flags.criticalModule}
+    test_changed: ${analysis.context.flags.testChanged}
+    schema_changed: ${analysis.context.flags.schemaChanged}
+    config_only: ${analysis.context.flags.configOnly}
 
-You are TWO distinct code review personas working together to provide high-quality, actionable feedback on this ${analysis.context.framework.name} pull request.
+STRATEGY: ${strategy.name}
+INSTRUCTIONS: ${strategy.instructions}
 
-## PERSONA A: "Hawk" (The Critical Reviewer)
-- Finds potential issues, bugs, security vulnerabilities
-- Tends to raise concerns and ask questions
-- Focuses on edge cases and error handling
-- Looks for TypeScript/JavaScript-specific issues
+${this.projectConventions ? `PROJECT_CONVENTIONS:\n${this.projectConventions}\n` : ""}
 
-## PERSONA B: "Owl" (The Pragmatic Validator)
-- Validates Hawk's concerns against project context
-- Considers false positive patterns
-- Filters out noise and non-actionable feedback
-- Ensures recommendations are practical and ROI-positive
-
-## REVIEW PROCESS (Internal Dialogue)
-
-1. **Hawk** reviews the diff and identifies potential issues
-2. **Owl** validates each issue against:
-   - Project's known false positive patterns
-   - ${analysis.context.framework.name} framework conventions
-   - Context and project conventions
-   - ROI (Is this worth mentioning?)
-3. **Both personas must agree** before reporting an issue
-4. Only report issues that meet ALL THREE criteria:
-   - ✅ Prevents production bugs
-   - ✅ High confidence (not speculation)
-   - ✅ High ROI (valuable to fix)
-
-## FALSE POSITIVE PATTERNS TO IGNORE
-
-${this.formatFPPatterns(fpPatterns)}
-
-## PROJECT CONTEXT
-
-### Framework: ${analysis.context.framework.name} ${analysis.context.framework.version || ""}
-
-${this.getFrameworkInstructions(analysis.context.framework.name)}
-
-### Affected Areas
-${analysis.context.affectedAreas.join(", ") || "None"}
-
-### Context Flags
-- Critical Module: ${analysis.context.flags.criticalModule ? "⚠️ YES" : "No"}
-- Test Changed: ${analysis.context.flags.testChanged ? "Yes" : "No"}
-- Schema Changed: ${analysis.context.flags.schemaChanged ? "Yes" : "No"}
-- Config Only: ${analysis.context.flags.configOnly ? "Yes" : "No"}
-
-${this.projectConventions ? `### Project Conventions\n\n${this.projectConventions}` : ""}
-
-## REVIEW STRATEGY: ${strategy.name.toUpperCase()}
-
-${strategy.instructions}
-
-## DIFF TO REVIEW
-
+DIFF:
 \`\`\`diff
 ${analysis.prioritizedDiff}
 \`\`\`
 
----
-
-## OUTPUT FORMAT
-
-**IMPORTANT**: Return your response in JSON format ONLY, with no additional text before or after:
-
-\`\`\`json
+OUTPUT_SCHEMA:
 {
   "issues": [
     {
-      "file": "path/to/file.ts",
-      "line": 42,
+      "file": "string",
+      "line": "number|undefined",
       "type": "bug|security|performance|maintainability",
       "confidence": "high|medium",
-      "title": "Brief title",
-      "description": "Clear explanation",
-      "suggestion": "Optional fix recommendation"
+      "title": "string",
+      "description": "string",
+      "suggestion": "string|undefined"
     }
   ],
   "consensus": {
-    "totalReviewed": 10,
-    "issuesRaised": 2,
-    "issuesFiltered": 5,
-    "overallAssessment": "Brief 1-2 sentence summary"
+    "totalReviewed": "number",
+    "issuesRaised": "number",
+    "issuesFiltered": "number",
+    "overallAssessment": "string"
   }
 }
-\`\`\`
 
-If **no consensus issues** found, return:
-
-\`\`\`json
-{
-  "issues": [],
-  "consensus": {
-    "totalReviewed": 10,
-    "issuesRaised": 0,
-    "issuesFiltered": 3,
-    "overallAssessment": "✅ No significant issues found. Code looks good."
-  }
-}
-\`\`\`
-
-## REMEMBER
-
-- **Quality over quantity**: One actionable issue is better than ten noisy ones
-- **Be specific**: Always include file path and line number when possible
-- **Be pragmatic**: Only report issues worth fixing
-- **Respect patterns**: Don't flag known false positives
-- **Framework-aware**: Apply ${analysis.context.framework.name}-specific knowledge
+RESPOND_WITH_VALID_JSON_ONLY
     `.trim();
   }
 
   /**
-   * False Positive 패턴 포맷팅
+   * Format False Positive patterns for prompt
    */
   private formatFPPatterns(patterns: FalsePositivePattern[]): string {
     if (patterns.length === 0) {
-      return "No custom patterns defined.";
+      return "FALSE_POSITIVE_PATTERNS: none";
     }
 
-    return patterns
-      .map((p) => {
-        return `
-### ${p.id}
-- **Category**: ${p.category}
-- **Explanation**: ${p.explanation}
-- **Indicators**: ${p.falsePositiveIndicators.join(", ")}
-        `.trim();
-      })
-      .join("\n\n");
+    const formatted = patterns
+      .map(
+        (p) => `
+- id: ${p.id}
+  category: ${p.category}
+  explanation: ${p.explanation}
+  ignore_if_review_contains: ${JSON.stringify(p.falsePositiveIndicators)}`
+      )
+      .join("\n");
+
+    return `FALSE_POSITIVE_PATTERNS:\n${formatted}`;
   }
 
   /**
-   * 프레임워크별 리뷰 지침
+   * Parse Claude response into structured format
    */
-  private getFrameworkInstructions(frameworkName: string): string {
-    const instructions: Record<string, string> = {
-      nestjs: `
-**NestJS Best Practices**:
-- Dependency Injection: Use constructor injection
-- Guards vs Interceptors: Guards for auth, Interceptors for transformation
-- Exception Filters: Custom filters for consistent error responses
-- DTOs: Use class-validator for validation
-- Modules: Avoid circular dependencies
-      `.trim(),
-
-      nextjs: `
-**Next.js Best Practices**:
-- Server Components: Prefer Server Components by default
-- Data Fetching: Use async Server Components, not useEffect
-- API Routes: Validate input, use proper HTTP status codes
-- Metadata: Use generateMetadata for SEO
-- Image: Always use next/image for optimization
-      `.trim(),
-
-      react: `
-**React Best Practices**:
-- Hooks: Follow Rules of Hooks
-- useEffect: Include all dependencies, cleanup when needed
-- Performance: Use memo/useMemo/useCallback appropriately
-- State: Keep state close to where it's used
-- Keys: Use stable, unique keys in lists
-      `.trim(),
-
-      express: `
-**Express Best Practices**:
-- Middleware: Order matters, error handlers last
-- Error Handling: Use async/await with try-catch or error middleware
-- Validation: Validate all user input
-- Security: Use helmet, rate limiting
-- Routing: Use Router for modular routes
-      `.trim(),
-
-      vanilla: `
-**TypeScript/JavaScript Best Practices**:
-- Type Safety: Avoid 'any', use proper types
-- Async/Await: Handle promise rejections
-- Error Handling: Throw typed errors
-- Null Safety: Check for null/undefined
-      `.trim(),
-    };
-
-    return instructions[frameworkName] || instructions.vanilla;
-  }
-
-  /**
-   * 리뷰 응답 파싱
-   */
-  private parseReviewResponse(responseText: string): ReviewIssue[] {
+  private parseReviewResponse(responseText: string): CodeReviewResponse {
     try {
-      // JSON 코드 블록 추출
-      const jsonMatch = responseText.match(/```json\s*\n([\s\S]*?)\n```/);
+      // Try to extract JSON from code block first
+      const jsonMatch = responseText.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
       const jsonText = jsonMatch ? jsonMatch[1] : responseText;
 
-      const parsed = JSON.parse(jsonText);
+      // Clean up any potential issues
+      const cleanedJson = jsonText.trim();
+      const parsed = JSON.parse(cleanedJson);
 
+      // Validate structure
       if (!parsed.issues || !Array.isArray(parsed.issues)) {
-        logger.warn("⚠️ Invalid response format, no issues found");
-        return [];
+        logger.warn("⚠️ Invalid response format, no issues array found");
+        return {
+          issues: [],
+          consensus: {
+            totalReviewed: 0,
+            issuesRaised: 0,
+            issuesFiltered: 0,
+            overallAssessment: "Failed to parse review response",
+          },
+        };
       }
 
-      return parsed.issues.map((issue: any) => ({
-        file: issue.file || "unknown",
-        line: issue.line,
-        type: issue.type || "maintainability",
-        confidence: issue.confidence || "medium",
-        title: issue.title || "Issue",
-        description: issue.description || "",
-        suggestion: issue.suggestion,
+      // Normalize issues
+      const issues: ReviewIssue[] = parsed.issues.map((issue: Record<string, unknown>) => ({
+        file: (issue.file as string) || "unknown",
+        line: issue.line as number | undefined,
+        type: (issue.type as ReviewIssue["type"]) || "maintainability",
+        confidence: (issue.confidence as ReviewIssue["confidence"]) || "medium",
+        title: (issue.title as string) || "Issue",
+        description: (issue.description as string) || "",
+        suggestion: issue.suggestion as string | undefined,
       }));
+
+      // Normalize consensus
+      const consensus = parsed.consensus || {
+        totalReviewed: 0,
+        issuesRaised: issues.length,
+        issuesFiltered: 0,
+        overallAssessment: issues.length > 0 ? "Issues found" : "No issues found",
+      };
+
+      return { issues, consensus };
     } catch (error) {
       logger.error(`Failed to parse review response: ${error}`);
       logger.debug(`Response text: ${responseText.substring(0, 500)}`);
-      return [];
+      return {
+        issues: [],
+        consensus: {
+          totalReviewed: 0,
+          issuesRaised: 0,
+          issuesFiltered: 0,
+          overallAssessment: "Failed to parse review response",
+        },
+      };
     }
   }
 
   /**
-   * 리뷰 요약 생성
+   * Generate review summary
    */
   private generateSummary(
     issues: ReviewIssue[],
-    analysis: PRAnalysis
+    analysis: PRAnalysis,
+    consensus: CodeReviewResponse["consensus"]
   ): ReviewSummary {
     const criticalIssues = issues.filter(
       (i) => i.type === "security" || i.type === "bug"
     ).length;
 
-    let overallAssessment = "";
+    // Use consensus assessment if available, otherwise generate
+    let overallAssessment = consensus.overallAssessment;
 
-    if (issues.length === 0) {
-      overallAssessment = "✅ No significant issues found. Code looks good.";
-    } else if (criticalIssues > 0) {
-      overallAssessment = `⚠️ Found ${criticalIssues} critical issue(s) that should be addressed before merging.`;
-    } else {
-      overallAssessment = `Found ${issues.length} issue(s) to consider for improved code quality.`;
+    if (!overallAssessment || overallAssessment === "Failed to parse review response") {
+      if (issues.length === 0) {
+        overallAssessment = "✅ No significant issues found. Code looks good.";
+      } else if (criticalIssues > 0) {
+        overallAssessment = `⚠️ Found ${criticalIssues} critical issue(s) that should be addressed before merging.`;
+      } else {
+        overallAssessment = `Found ${issues.length} issue(s) to consider for improved code quality.`;
+      }
     }
 
     return {
@@ -330,5 +428,18 @@ If **no consensus issues** found, return:
       overallAssessment,
     };
   }
-}
 
+  /**
+   * Get framework instructions for external use
+   */
+  static getFrameworkInstructions(frameworkName: FrameworkName): string {
+    return FRAMEWORK_INSTRUCTIONS[frameworkName] || FRAMEWORK_INSTRUCTIONS.vanilla;
+  }
+
+  /**
+   * Get agent consensus instructions for external use
+   */
+  static getAgentInstructions(): string {
+    return AGENT_CONSENSUS_INSTRUCTIONS;
+  }
+}
