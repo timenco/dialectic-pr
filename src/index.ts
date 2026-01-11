@@ -22,10 +22,33 @@ export { PrivacyGuard } from "./security/privacy-guard.js";
 export { ExcludeFilter } from "./security/exclude-filter.js";
 
 // Frameworks
-export { FrameworkDetector } from "./frameworks/detector.js";
+export {
+  FrameworkDetector,
+  Framework,
+  BaseFramework,
+  FrameworkRegistry,
+  FrameworkContextFlags,
+  NestJSFramework,
+  NextJSFramework,
+  ReactFramework,
+  ExpressFramework,
+  VanillaFramework,
+  registerAllFrameworks,
+} from "./frameworks/index.js";
 
 // Utils
 export { logger } from "./utils/logger.js";
 export { ConfigLoader } from "./utils/config-loader.js";
 export { MetricsCalculator } from "./utils/metrics-calculator.js";
+
+// False Positive Defense
+export {
+  BUILTIN_PATTERNS,
+  getPatternsByCategory,
+  getPatternById,
+  getAllPatternIds,
+  PatternMatcher,
+  PatternMatchResult,
+  ProjectRulesLoader,
+} from "./false-positive/index.js";
 
