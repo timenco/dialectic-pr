@@ -1,109 +1,56 @@
-# LOGGER SPECIFICATION
+# Logger
 
-## DEPENDENCIES
+## Purpose
+
+Provides structured console logging with configurable log levels and consistent emoji-prefixed output formatting.
+
+## Location
+
+[src/utils/logger.ts](../../src/utils/logger.ts)
+
+## Dependencies
+
 ```yaml
 external: []
 internal: []
 ```
 
-## FILE_PATH
-```
-src/utils/logger.ts
-```
+## Core Responsibility
 
-## CLASS_INTERFACE
+- Output formatted log messages to console
+- Support multiple log levels (debug, info, warn, error)
+- Filter messages based on configured log level
+- Provide semantic logging methods (success, section)
+- Use consistent emoji prefixes for visual scanning
+
+## Key Interface
+
 ```typescript
 export class Logger {
   setLogLevel(level: LogLevel): void;
-  debug(message: string): void;
-  info(message: string): void;
-  warn(message: string): void;
-  error(message: string): void;
-  success(message: string): void;
-  section(title: string): void;
+
+  debug(message: string): void;    // 🔍
+  info(message: string): void;     // ℹ️
+  warn(message: string): void;     // ⚠️
+  error(message: string): void;    // ❌
+  success(message: string): void;  // ✅
+  section(title: string): void;    // ====
 }
 
 export const logger: Logger;
+
+type LogLevel = "debug" | "info" | "warn" | "error";
 ```
 
-## IMPLEMENTATION
-```typescript
-import { LogLevel } from "../core/types.js";
+## Log Level Behavior
 
-export class Logger {
-  private logLevel: LogLevel = "info";
-  
-  private readonly logLevels: Record<LogLevel, number> = {
-    debug: 0,
-    info: 1,
-    warn: 2,
-    error: 3
-  };
+- **debug**: Shows all messages (debug, info, warn, error)
+- **info**: Shows info, warn, error (suppresses debug)
+- **warn**: Shows warn, error (suppresses debug, info)
+- **error**: Shows only error messages
 
-  setLogLevel(level: LogLevel): void {
-    this.logLevel = level;
-  }
+Default level is `info`.
 
-  debug(message: string): void {
-    if (this.shouldLog("debug")) {
-      console.log(`🔍 ${message}`);
-    }
-  }
+## Related Specs
 
-  info(message: string): void {
-    if (this.shouldLog("info")) {
-      console.log(`ℹ️  ${message}`);
-    }
-  }
-
-  warn(message: string): void {
-    if (this.shouldLog("warn")) {
-      console.warn(`⚠️  ${message}`);
-    }
-  }
-
-  error(message: string): void {
-    if (this.shouldLog("error")) {
-      console.error(`❌ ${message}`);
-    }
-  }
-
-  success(message: string): void {
-    if (this.shouldLog("info")) {
-      console.log(`✅ ${message}`);
-    }
-  }
-
-  section(title: string): void {
-    if (this.shouldLog("info")) {
-      console.log(`\n${"=".repeat(60)}`);
-      console.log(`  ${title}`);
-      console.log(`${"=".repeat(60)}\n`);
-    }
-  }
-
-  private shouldLog(level: LogLevel): boolean {
-    return this.logLevels[level] >= this.logLevels[this.logLevel];
-  }
-}
-
-export const logger = new Logger();
-```
-
-## BEHAVIOR
-```yaml
-log_level_debug:
-  all_messages_printed: true
-
-log_level_info:
-  debug_suppressed: true
-  info_warn_error_printed: true
-
-log_level_warn:
-  debug_info_suppressed: true
-  warn_error_printed: true
-
-log_level_error:
-  only_error_printed: true
-```
-
+Used throughout the codebase for consistent logging. No specific dependencies.

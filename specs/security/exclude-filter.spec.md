@@ -1,132 +1,67 @@
-# EXCLUDE FILTER SPECIFICATION
+# Exclude Filter
 
-## DEPENDENCIES
+## Purpose
+
+Filters out files that should not be reviewed, including sensitive files, generated artifacts, binaries, and user-configured patterns using glob matching.
+
+## Location
+
+[src/security/exclude-filter.ts](../../src/security/exclude-filter.ts)
+
+## Dependencies
+
 ```yaml
 internal: []
 external:
   - minimatch
 ```
 
-## FILE_PATH
-```
-src/security/exclude-filter.ts
-```
+## Core Responsibility
 
-## CLASS_INTERFACE
+- Filter files based on default exclusion patterns
+- Support custom exclusion patterns from config
+- Identify sensitive files (`.env`, secrets, keys)
+- Skip generated/build artifacts (lock files, dist, node_modules)
+- Exclude binary files (images, minified code)
+- Provide utility methods for file type classification
+
+## Key Interface
+
 ```typescript
 export class ExcludeFilter {
   constructor(customExcludes?: string[]);
+
   shouldExclude(filePath: string): boolean;
   filterFiles(files: string[]): string[];
   getExcludedFiles(files: string[]): string[];
+
   isSourceFile(filePath: string): boolean;
   isTestFile(filePath: string): boolean;
   isConfigFile(filePath: string): boolean;
 }
 ```
 
-## IMPLEMENTATION
-```typescript
-import { minimatch } from "minimatch";
+## Default Exclusion Patterns
 
-export class ExcludeFilter {
-  private readonly defaultExcludes = [
-    // Sensitive files
-    "**/.env*",
-    "**/secrets/**",
-    "**/*.pem",
-    "**/*.key",
-    
-    // Binary/generated files
-    "**/*.lock",
-    "**/package-lock.json",
-    "**/yarn.lock",
-    "**/pnpm-lock.yaml",
-    "**/*.min.js",
-    "**/*.min.css",
-    "**/*.svg",
-    "**/*.png",
-    "**/*.jpg",
-    "**/*.ico",
-    
-    // Build artifacts
-    "**/dist/**",
-    "**/build/**",
-    "**/node_modules/**",
-    "**/__pycache__/**",
-    "**/.next/**",
-    "**/.nuxt/**"
-  ];
+**Sensitive files:**
+- `**/.env*`
+- `**/secrets/**`
+- `**/*.pem`, `**/*.key`
 
-  private readonly allPatterns: string[];
+**Generated files:**
+- `**/*.lock` (package-lock.json, yarn.lock, pnpm-lock.yaml)
+- `**/*.min.js`, `**/*.min.css`
 
-  constructor(customExcludes: string[] = []) {
-    this.allPatterns = [...this.defaultExcludes, ...customExcludes];
-  }
+**Binary files:**
+- `**/*.svg`, `**/*.png`, `**/*.jpg`, `**/*.ico`
 
-  shouldExclude(filePath: string): boolean {
-    return this.allPatterns.some(pattern => minimatch(filePath, pattern));
-  }
+**Build artifacts:**
+- `**/dist/**`, `**/build/**`, `**/node_modules/**`
+- `**/__pycache__/**`, `**/.next/**`, `**/.nuxt/**`
 
-  filterFiles(files: string[]): string[] {
-    return files.filter(f => !this.shouldExclude(f));
-  }
+Custom patterns from config are merged with defaults.
 
-  getExcludedFiles(files: string[]): string[] {
-    return files.filter(f => this.shouldExclude(f));
-  }
+## Related Specs
 
-  isSourceFile(filePath: string): boolean {
-    return /\.(ts|tsx|js|jsx)$/.test(filePath);
-  }
-
-  isTestFile(filePath: string): boolean {
-    return /\.(test|spec)\.(ts|tsx|js|jsx)$/.test(filePath);
-  }
-
-  isConfigFile(filePath: string): boolean {
-    return /\.(json|yaml|yml|toml|ini|env)$/.test(filePath) ||
-           /\.(config|rc)\.(ts|js)$/.test(filePath);
-  }
-}
-```
-
-## DEFAULT_EXCLUDES
-```yaml
-sensitive:
-  - "**/.env*"
-  - "**/secrets/**"
-  - "**/*.pem"
-  - "**/*.key"
-
-generated:
-  - "**/*.lock"
-  - "**/*.min.js"
-  - "**/*.min.css"
-
-binary:
-  - "**/*.svg"
-  - "**/*.png"
-  - "**/*.jpg"
-
-build:
-  - "**/dist/**"
-  - "**/build/**"
-  - "**/node_modules/**"
-```
-
-## TEST_CASES
-```yaml
-test_exclude_env:
-  input: ".env.local"
-  assert: shouldExclude = true
-
-test_exclude_lock:
-  input: "package-lock.json"
-  assert: shouldExclude = true
-
-test_include_source:
-  input: "src/index.ts"
-  assert: shouldExclude = false
-```
-
+- [privacy-guard.spec.md](./privacy-guard.spec.md) - Content-level secret detection (complementary)
+- [config-loader.spec.md](../utils/config-loader.spec.md) - Loads custom exclusion patterns

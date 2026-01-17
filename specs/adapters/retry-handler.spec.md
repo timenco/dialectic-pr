@@ -1,18 +1,33 @@
-# RETRY HANDLER SPECIFICATION
+# Retry Handler
 
-## DEPENDENCIES
+## Purpose
+
+Implements exponential backoff retry logic for API calls, handling transient failures like rate limits and server errors.
+
+## Location
+
+[src/adapters/retry-handler.ts](../../src/adapters/retry-handler.ts)
+
+## Dependencies
+
 ```yaml
 internal:
   - utils/logger.spec.md
+  - core/types.spec.md (APIError)
 external: []
 ```
 
-## FILE_PATH
-```
-src/adapters/retry-handler.ts
-```
+## Core Responsibility
 
-## CLASS_INTERFACE
+- Execute functions with automatic retry on specified errors
+- Implement exponential backoff with configurable delays
+- Cap maximum delay to prevent excessive wait times
+- Log retry attempts with clear status information
+- Distinguish between retryable and non-retryable errors
+- Respect maximum retry limits
+
+## Key Interface
+
 ```typescript
 export interface RetryConfig {
   maxRetries: number;
@@ -22,6 +37,7 @@ export interface RetryConfig {
 
 export class RetryHandler {
   constructor(config: RetryConfig);
+
   async execute<T>(
     fn: () => Promise<T>,
     retryableStatusCodes: number[]
@@ -29,106 +45,26 @@ export class RetryHandler {
 }
 ```
 
-## IMPLEMENTATION
-```typescript
-import { logger } from "../utils/logger.js";
-import { APIError } from "../core/types.js";
+## Retry Strategy
 
-export interface RetryConfig {
-  maxRetries: number;
-  initialDelayMs: number;
-  maxDelayMs: number;
-}
+Exponential backoff formula: `delay = min(initialDelay * 2^attempt, maxDelay)`
 
-export class RetryHandler {
-  constructor(private config: RetryConfig) {}
+Example with config `{ maxRetries: 3, initialDelayMs: 2000, maxDelayMs: 10000 }`:
+- Attempt 0: Execute immediately
+- Attempt 1: Wait 2s (2000 * 2^0)
+- Attempt 2: Wait 4s (2000 * 2^1)
+- Attempt 3: Wait 8s (2000 * 2^2)
+- Attempt 4: Throw error (max retries exceeded)
 
-  async execute<T>(
-    fn: () => Promise<T>,
-    retryableStatusCodes: number[] = []
-  ): Promise<T> {
-    let lastError: Error | undefined;
-    
-    for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
-      try {
-        return await fn();
-      } catch (error) {
-        lastError = error as Error;
-        
-        // Check if error is retryable
-        if (error instanceof APIError && 
-            retryableStatusCodes.includes(error.statusCode)) {
-          
-          if (attempt < this.config.maxRetries) {
-            const delay = this.calculateDelay(attempt);
-            logger.warn(
-              `API error ${error.statusCode}. Retry ${attempt + 1}/${this.config.maxRetries} in ${delay}ms`
-            );
-            await this.sleep(delay);
-            continue;
-          }
-        }
-        
-        // Non-retryable error or max retries reached
-        throw error;
-      }
-    }
-    
-    throw lastError!;
-  }
+## Error Handling
 
-  private calculateDelay(attempt: number): number {
-    // Exponential backoff: initialDelay * 2^attempt
-    const delay = this.config.initialDelayMs * Math.pow(2, attempt);
-    return Math.min(delay, this.config.maxDelayMs);
-  }
+Only retries on errors matching retryable status codes:
+- 429 (rate limit)
+- 500, 502, 503, 504 (server errors)
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-}
-```
+Immediately throws on client errors (400, 401, 403, 404).
 
-## RETRY_LOGIC
-```yaml
-attempt_0:
-  delay: 0ms
-  action: execute
+## Related Specs
 
-attempt_1:
-  delay: initialDelayMs * 2^0 = 2000ms
-  action: retry
-
-attempt_2:
-  delay: initialDelayMs * 2^1 = 4000ms
-  action: retry
-
-attempt_3:
-  delay: initialDelayMs * 2^2 = 8000ms
-  max_capped: 10000ms
-  action: retry
-
-attempt_4:
-  delay: exceeded maxRetries
-  action: throw
-```
-
-## TEST_CASES
-```yaml
-test_success_first_try:
-  input: fn_returns_immediately
-  assert: no_retries
-
-test_retry_on_429:
-  input: fn_throws_APIError_429_then_succeeds
-  assert: retries_once
-
-test_no_retry_on_400:
-  input: fn_throws_APIError_400
-  assert: throws_immediately
-
-test_max_retries_exceeded:
-  input: fn_always_fails
-  assert: throws_after_3_retries
-```
-
+- [claude-api.spec.md](./claude-api.spec.md) - Primary consumer for API retry logic
+- [types.spec.md](../core/types.spec.md) - APIError type definition

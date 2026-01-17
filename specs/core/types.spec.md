@@ -1,274 +1,80 @@
-# TYPES SPECIFICATION
+# Types Specification
 
-## DEPENDENCIES
+## Purpose
+
+Central type definitions for the entire Dialectic PR system. This file has no dependencies and serves as the foundation for all other modules.
+
+## Location
+
+→ [`src/core/types.ts`](../../src/core/types.ts)
+
+## Dependencies
+
 ```yaml
 external: []
 internal: []
 ```
 
-## FILE_PATH
-```
-src/core/types.ts
-```
+## Type Categories
 
-## IMPLEMENTATION
+### CLI & Configuration
+- `CLIOptions` - Command-line interface options
+- `Config` - User configuration structure (`.github/dialectic-pr.json`)
 
-```typescript
-// ============================================================================
-// CLI & Configuration Types
-// ============================================================================
+### Framework Types
+- `FrameworkName` - `"nestjs" | "nextjs" | "react" | "express" | "vanilla"`
+- `DetectedFramework` - Framework detection result with confidence
 
-export interface CLIOptions {
-  anthropicApiKey: string;
-  githubToken: string;
-  owner: string;
-  repo: string;
-  pullNumber: number;
-  baseBranch: string;
-  configPath?: string;
-  dryRun?: boolean;
-  forceReview?: boolean;
-}
+### File & Priority
+- `ChangedFile` - File with additions/deletions
+- `PrioritizedFile` - File with priority level and reason
+- `FilePriority` - `"critical" | "high" | "normal" | "low"`
+- `PriorityRule` - Pattern matching rule for priority assignment
 
-export interface Config {
-  model: string;
-  exclude_patterns: string[];
-  false_positive_patterns: FalsePositivePattern[];
-  strategies?: {
-    small?: Partial<ReviewStrategy>;
-    medium?: Partial<ReviewStrategy>;
-    large?: Partial<ReviewStrategy>;
-    xlarge?: Partial<ReviewStrategy>;
-  };
-  framework_specific?: Record<string, any>;
-  conventions?: {
-    paths: string[];
-    sections?: Record<string, string[]>;
-  };
-}
+### PR Analysis
+- `PRMetrics` - File counts, line counts, diff size
+- `ContextFlags` - Boolean flags (testChanged, schemaChanged, criticalModule, etc.)
+- `PRContext` - Framework, affected areas, flags
+- `PRAnalysis` - Complete PR analysis result
+- `GitHubPRInfo` - PR identification (owner, repo, number, branches)
 
-// ============================================================================
-// Framework Types
-// ============================================================================
+### Strategy Types
+- `StrategyName` - `"small" | "medium" | "large" | "xlarge" | "skip"`
+- `ReviewStrategy` - Strategy with token limits and instructions
 
-export type FrameworkName = "nestjs" | "nextjs" | "react" | "express" | "vanilla";
+### False Positive Types
+- `FalsePositivePattern` - Pattern definition for FP detection
+  - `id`, `category`, `explanation`
+  - `falsePositiveIndicators` - Phrases that indicate false positive
 
-export interface DetectedFramework {
-  name: FrameworkName;
-  version?: string;
-  confidence: "high" | "medium" | "low";
-}
+### Review Result Types
+- `IssueType` - `"bug" | "security" | "performance" | "maintainability"`
+- `ConfidenceLevel` - `"high" | "medium"`
+- `ReviewIssue` - Single issue with file, line, type, description, suggestion
+- `ReviewSummary` - Total issues, critical count, affected areas, assessment
+- `ReviewMetadata` - Framework, strategy, tokens used, duration
+- `ReviewResult` - Complete review output (issues, summary, metadata)
 
-// ============================================================================
-// File & Priority Types
-// ============================================================================
+### API Types
 
-export interface ChangedFile {
-  path: string;
-  content: string;
-  additions: number;
-  deletions: number;
-}
+#### Claude API
+- `ClaudeOptions` - API call options (maxTokens, model, temperature)
+- `TokenUsage` - Input/output tokens and cost
+- `ClaudeResponse` - Text response with usage
 
-export type FilePriority = "critical" | "high" | "normal" | "low";
+#### GitHub API
+- `GitHubFile` - File with status, additions, deletions, patch
+- `GitHubComment` - Path, position, body for batch review
 
-export interface PrioritizedFile {
-  path: string;
-  content: string;
-  priority: FilePriority;
-  reason: string;
-}
+### Error Types
+- `ValidationError` - Input validation errors
+- `APIError` - External API errors with status code
 
-export interface PriorityRule {
-  pattern: RegExp | string;
-  priority: FilePriority;
-  reason: string;
-}
+### Logger Types
+- `LogLevel` - `"debug" | "info" | "warn" | "error"`
 
-// ============================================================================
-// PR Analysis Types
-// ============================================================================
+## Validation Rules
 
-export interface PRMetrics {
-  fileCount: number;
-  addedLines: number;
-  deletedLines: number;
-  diffSize: number;
-  coreFileCount: number;
-  tsFileCount: number;
-  jsFileCount: number;
-}
-
-export interface ContextFlags {
-  testChanged: boolean;
-  schemaChanged: boolean;
-  apiRoutesChanged: boolean;
-  controllersChanged: boolean;
-  criticalModule: boolean;
-  configOnly: boolean;
-}
-
-export interface PRContext {
-  framework: DetectedFramework;
-  affectedAreas: string[];
-  flags: ContextFlags;
-}
-
-export interface PRAnalysis {
-  diff: string;
-  relevantDiff: string;
-  prioritizedDiff: string;
-  metrics: PRMetrics;
-  context: PRContext;
-  changedFiles: string[];
-  prioritizedFiles: PrioritizedFile[];
-  excludedFiles: string[];
-}
-
-export interface GitHubPRInfo {
-  owner: string;
-  repo: string;
-  pullNumber: number;
-  baseBranch: string;
-  headBranch: string;
-}
-
-// ============================================================================
-// Strategy Types
-// ============================================================================
-
-export type StrategyName = "small" | "medium" | "large" | "xlarge" | "skip";
-
-export interface ReviewStrategy {
-  name: StrategyName;
-  maxTokens: number;
-  contextTokenBudget: number;
-  instructions: string;
-}
-
-// ============================================================================
-// False Positive Types
-// ============================================================================
-
-export interface FalsePositivePattern {
-  id: string;
-  category: string;
-  pattern?: RegExp;
-  explanation: string;
-  severity?: string;
-  contextRequired?: string[];
-  falsePositiveIndicators: string[];
-}
-
-// ============================================================================
-// Review Result Types
-// ============================================================================
-
-export type IssueType = "bug" | "security" | "performance" | "maintainability";
-export type ConfidenceLevel = "high" | "medium";
-
-export interface ReviewIssue {
-  file: string;
-  line?: number;
-  type: IssueType;
-  confidence: ConfidenceLevel;
-  title: string;
-  description: string;
-  suggestion?: string;
-}
-
-export interface ReviewSummary {
-  totalIssues: number;
-  criticalIssues: number;
-  affectedAreas: string[];
-  overallAssessment: string;
-}
-
-export interface ReviewMetadata {
-  framework: DetectedFramework;
-  strategy: StrategyName;
-  tokensUsed: number;
-  filesReviewed: number;
-  filesExcluded: number;
-  reviewDuration: number;
-}
-
-export interface ReviewResult {
-  issues: ReviewIssue[];
-  summary: ReviewSummary;
-  metadata: ReviewMetadata;
-}
-
-// ============================================================================
-// Claude API Types
-// ============================================================================
-
-export interface ClaudeOptions {
-  maxTokens: number;
-  model?: string;
-  temperature?: number;
-}
-
-export interface TokenUsage {
-  inputTokens: number;
-  outputTokens: number;
-  totalCost: number;
-}
-
-export interface ClaudeResponse {
-  text: string;
-  usage: TokenUsage;
-}
-
-// ============================================================================
-// GitHub API Types
-// ============================================================================
-
-export interface GitHubFile {
-  filename: string;
-  status: string;
-  additions: number;
-  deletions: number;
-  changes: number;
-  patch?: string;
-}
-
-export interface GitHubComment {
-  path: string;
-  position: number;
-  body: string;
-}
-
-// ============================================================================
-// Error Types
-// ============================================================================
-
-export class ValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ValidationError";
-  }
-}
-
-export class APIError extends Error {
-  constructor(
-    public statusCode: number,
-    message: string,
-    public originalError?: any
-  ) {
-    super(message);
-    this.name = "APIError";
-  }
-}
-
-// ============================================================================
-// Logger Types
-// ============================================================================
-
-export type LogLevel = "debug" | "info" | "warn" | "error";
-```
-
-## VALIDATION_RULES
 ```yaml
 all_exports_must_be_typed: true
 no_any_types: true
@@ -276,74 +82,19 @@ strict_null_checks: true
 readonly_where_possible: true
 ```
 
-## USAGE_EXAMPLES
-```typescript
-// Example 1: Creating PR analysis result
-const analysis: PRAnalysis = {
-  diff: "...",
-  relevantDiff: "...",
-  prioritizedDiff: "...",
-  metrics: {
-    fileCount: 5,
-    addedLines: 100,
-    deletedLines: 20,
-    diffSize: 12000,
-    coreFileCount: 3,
-    tsFileCount: 4,
-    jsFileCount: 1
-  },
-  context: {
-    framework: { name: "nestjs", version: "10.0.0", confidence: "high" },
-    affectedAreas: ["🔐 Auth", "⚙️ Business Logic"],
-    flags: {
-      testChanged: false,
-      schemaChanged: true,
-      apiRoutesChanged: false,
-      controllersChanged: true,
-      criticalModule: true,
-      configOnly: false
-    }
-  },
-  changedFiles: ["src/auth/auth.service.ts"],
-  prioritizedFiles: [],
-  excludedFiles: []
-};
+## Key Design Principles
 
-// Example 2: Creating review result
-const result: ReviewResult = {
-  issues: [
-    {
-      file: "src/auth/auth.service.ts",
-      line: 42,
-      type: "security",
-      confidence: "high",
-      title: "Missing input validation",
-      description: "User input not validated before database query",
-      suggestion: "Add class-validator DTO validation"
-    }
-  ],
-  summary: {
-    totalIssues: 1,
-    criticalIssues: 1,
-    affectedAreas: ["🔐 Auth"],
-    overallAssessment: "⚠️ Found 1 critical issue that should be addressed"
-  },
-  metadata: {
-    framework: { name: "nestjs", confidence: "high" },
-    strategy: "small",
-    tokensUsed: 12000,
-    filesReviewed: 3,
-    filesExcluded: 2,
-    reviewDuration: 5000
-  }
-};
-```
+1. **Zero Dependencies**: This file must not import from any other internal module
+2. **Immutability**: Use `readonly` for all properties where appropriate
+3. **Strict Typing**: No `any` types allowed
+4. **Comprehensive**: All shared types must be defined here to avoid circular dependencies
 
-## TEST_CASES
-```yaml
-type_definitions:
-  - all_interfaces_compile: true
-  - no_circular_dependencies: true
-  - exports_accessible: true
-```
+## Usage Examples
 
+See implementation file for detailed usage: [`src/core/types.ts`](../../src/core/types.ts)
+
+Key patterns:
+- All modules import types from this single source
+- Enables type-safe cross-module communication
+- Prevents circular dependency issues
+- Facilitates refactoring and type evolution

@@ -1,5 +1,7 @@
 # DIALECTIC-PR SYSTEM OVERVIEW
 
+> **Quick Links**: [`root.spec.md`](./root.spec.md) | [Architecture](#architecture_graph) | [Components](#core_components)
+
 ## METADATA
 ```yaml
 project: dialectic-pr

@@ -1,428 +1,134 @@
-# CONSENSUS ENGINE SPECIFICATION
+# Consensus Engine
 
-## DEPENDENCIES
+## Purpose
+
+Orchestrates the multi-persona code review system where two AI personas (Hawk and Owl) collaborate within a single API call to produce high-quality, low-noise review results.
+
+## Location
+
+→ [`src/core/consensus-engine.ts`](../../src/core/consensus-engine.ts)
+
+## Dependencies
+
 ```yaml
 internal:
-  - core/types.spec.md
-  - adapters/claude-api.spec.md
-  - prompts/consensus-prompt.spec.md
-  - utils/logger.spec.md
-external:
-  - none
+  - core/types → PRAnalysis, ReviewStrategy, ReviewResult
+  - adapters/claude-api → ClaudeAdapter
+  - utils/logger → logger
 ```
 
-## FILE_PATH
-```
-src/core/consensus-engine.ts
-```
+## Core Responsibility
 
-## CLASS_INTERFACE
+Execute consensus-based code review by:
+1. Building multi-persona prompts with FP patterns and framework context
+2. Calling Claude API with optimized prompts (with caching)
+3. Parsing structured JSON responses
+4. Generating review summaries and metadata
+
+## Key Interface
+
 ```typescript
-export class ConsensusEngine {
+class ConsensusEngine {
   constructor(
     claudeAdapter: ClaudeAdapter,
     projectConventions?: string
-  );
-  
-  async generateReview(
-    analysis: PRAnalysis,
-    strategy: ReviewStrategy,
-    fpPatterns: FalsePositivePattern[]
-  ): Promise<ReviewResult>;
-}
-```
-
-## IMPLEMENTATION
-
-### CLASS_STRUCTURE
-```typescript
-import {
-  PRAnalysis,
-  ReviewStrategy,
-  FalsePositivePattern,
-  ReviewResult,
-  ReviewIssue,
-  ReviewSummary,
-  ReviewMetadata,
-} from "./types.js";
-import { ClaudeAdapter } from "../adapters/claude-api.js";
-import { logger } from "../utils/logger.js";
-
-export class ConsensusEngine {
-  constructor(
-    private claudeAdapter: ClaudeAdapter,
-    private projectConventions?: string
-  ) {}
+  )
 
   async generateReview(
     analysis: PRAnalysis,
     strategy: ReviewStrategy,
     fpPatterns: FalsePositivePattern[]
-  ): Promise<ReviewResult> {
-    logger.section("Generating Review");
-    const startTime = Date.now();
-
-    // Build prompt with caching optimization
-    const prompt = this.buildMultiPersonaPrompt(analysis, strategy, fpPatterns);
-
-    // Call Claude API
-    logger.info("🤖 Calling Claude API with Multi-Persona prompt...");
-    const response = await this.claudeAdapter.sendMessage(prompt, {
-      maxTokens: strategy.maxTokens
-    });
-
-    // Parse response (guaranteed valid JSON with schema mode)
-    const issues = this.parseReviewResponse(response.text);
-
-    // Generate summary
-    const summary = this.generateSummary(issues, analysis);
-
-    // Build metadata
-    const metadata: ReviewMetadata = {
-      framework: analysis.context.framework,
-      strategy: strategy.name,
-      tokensUsed: response.usage.inputTokens + response.usage.outputTokens,
-      filesReviewed: analysis.prioritizedFiles.length,
-      filesExcluded: analysis.excludedFiles.length,
-      reviewDuration: Date.now() - startTime
-    };
-
-    logger.success(`✅ Review generated: ${issues.length} issues`);
-    logger.info(`⏱️  Duration: ${metadata.reviewDuration}ms`);
-    logger.info(`💰 Cost: $${response.usage.totalCost.toFixed(4)}`);
-
-    return { issues, summary, metadata };
-  }
+  ): Promise<ReviewResult>
 }
 ```
 
-### BUILD_MULTI_PERSONA_PROMPT
-```typescript
-private buildMultiPersonaPrompt(
-  analysis: PRAnalysis,
-  strategy: ReviewStrategy,
-  fpPatterns: FalsePositivePattern[]
-): string {
-  const agentInstructions = this.getAgentInstructions();
-  const fpPatternsText = this.formatFPPatterns(fpPatterns);
-  const frameworkInstructions = this.getFrameworkInstructions(analysis.context.framework.name);
-  const reviewContext = this.buildReviewContext(analysis, strategy);
-  
-  return `${agentInstructions}
+## Multi-Persona System
 
-${fpPatternsText}
+### PERSONA: Hawk (Critical Reviewer)
+- **Role**: Identify potential issues, bugs, security vulnerabilities
+- **Focus**: Edge cases, error handling, type safety, async operations
+- **Output**: List of concerns
 
-${frameworkInstructions}
+### PERSONA: Owl (Pragmatic Validator)
+- **Role**: Validate Hawk's concerns against project context
+- **Filter Criteria**:
+  - Check against false positive patterns
+  - Evaluate ROI (return on investment)
+  - Assess production impact
+  - Require high confidence
+- **Output**: Filtered actionable issues
 
-${reviewContext}`;
-}
+### Consensus Process
+
+```
+Step 1: Hawk analyzes diff → potential_issues[]
+Step 2: Owl validates each issue against:
+        - False positive patterns
+        - Production bug prevention value
+        - Confidence level
+        - ROI
+Step 3: Report only consensus_issues[]
 ```
 
-### GET_AGENT_INSTRUCTIONS
-```typescript
-private getAgentInstructions(): string {
-  return `SYSTEM: Multi-Persona Code Review
+## Prompt Structure
 
-PERSONA_HAWK:
-  role: critical_reviewer
-  objectives:
-    - identify_potential_issues: [bugs, security_vulnerabilities, edge_cases]
-    - focus_areas: [error_handling, type_safety, async_operations]
-    - output: list_of_concerns
+The engine builds a comprehensive prompt containing:
 
-PERSONA_OWL:
-  role: pragmatic_validator
-  objectives:
-    - validate_hawk_concerns: true
-    - filter_criteria:
-      - check_false_positive_patterns: true
-      - evaluate_roi: true
-      - assess_production_impact: true
-    - output: filtered_actionable_issues
+1. **Agent Instructions**: Multi-persona system description
+2. **FP Patterns**: Known false positive patterns to ignore
+3. **Framework Instructions**: Framework-specific best practices (NestJS, Next.js, React, Express)
+4. **Review Context**:
+   - Framework and version
+   - Affected areas (Auth, Payments, etc.)
+   - Context flags (criticalModule, testChanged, schemaChanged, etc.)
+   - Strategy instructions
+   - Project conventions (if provided)
+5. **Diff**: Prioritized diff content
+6. **Output Schema**: JSON structure for structured responses
 
-CONSENSUS_PROCESS:
-  step_1:
-    actor: HAWK
-    action: analyze_diff
-    output: potential_issues[]
-  
-  step_2:
-    actor: OWL
-    action: validate_each_issue
-    criteria:
-      - NOT in false_positive_patterns
-      - production_bug_prevention: true
-      - high_confidence: true
-      - high_roi: true
-    output: consensus_issues[]
-  
-  step_3:
-    action: report_only_consensus_issues
-    format: json_schema
+## Key Methods
 
-QUALITY_OVER_QUANTITY: true
-ACTIONABLE_FEEDBACK_ONLY: true`;
-}
-```
+### `generateReview()`
+Main entry point that orchestrates the entire review process:
+- Builds multi-persona prompt
+- Calls Claude API
+- Parses JSON response
+- Generates summary
+- Returns complete `ReviewResult`
 
-### FORMAT_FP_PATTERNS
-```typescript
-private formatFPPatterns(patterns: FalsePositivePattern[]): string {
-  if (patterns.length === 0) {
-    return "FALSE_POSITIVE_PATTERNS: none";
-  }
+### `buildMultiPersonaPrompt()`
+Constructs the comprehensive prompt by combining:
+- Agent system instructions
+- False positive patterns (formatted)
+- Framework-specific guidelines
+- Review context and diff
 
-  return `FALSE_POSITIVE_PATTERNS:
-${patterns.map(p => `
-- id: ${p.id}
-  category: ${p.category}
-  explanation: ${p.explanation}
-  ignore_if_review_contains: ${JSON.stringify(p.falsePositiveIndicators)}
-`).join('')}`;
-}
-```
+### `parseReviewResponse()`
+Parses Claude's JSON response into `ReviewIssue[]`
+- Guaranteed valid JSON (schema mode)
+- Handles parsing errors gracefully
+- Returns empty array on failure
 
-### GET_FRAMEWORK_INSTRUCTIONS
-```typescript
-private getFrameworkInstructions(frameworkName: string): string {
-  const instructions: Record<string, string> = {
-    nestjs: `FRAMEWORK: NestJS
-BEST_PRACTICES:
-  dependency_injection:
-    - use_constructor_injection: true
-    - avoid_property_injection: true
-  error_handling:
-    - use_exception_filters: true
-    - throw_http_exceptions: true
-  validation:
-    - use_class_validator_dtos: true
-  architecture:
-    - avoid_circular_dependencies: true
-COMMON_FALSE_POSITIVES:
-  - "throw new Error" is acceptable with AllExceptionsFilter
-  - "new" keyword is intentional for DTOs and entities
-  - Logger dependency injection is project pattern`,
+### `generateSummary()`
+Creates review summary:
+- Counts total and critical issues
+- Extracts affected areas
+- Generates overall assessment message
 
-    nextjs: `FRAMEWORK: Next.js
-BEST_PRACTICES:
-  components:
-    - prefer_server_components: true
-    - mark_client_components_explicitly: true
-  data_fetching:
-    - use_async_server_components: true
-    - avoid_useeffect_for_data: true
-  api_routes:
-    - validate_all_input: true
-  optimization:
-    - use_next_image: true
-COMMON_FALSE_POSITIVES:
-  - async Server Components without useEffect is correct
-  - "use client" directive is intentional`,
+## Framework-Specific Instructions
 
-    react: `FRAMEWORK: React
-BEST_PRACTICES:
-  hooks:
-    - follow_rules_of_hooks: true
-    - include_all_dependencies: true
-    - cleanup_effects: true
-  performance:
-    - use_memo_appropriately: true
-  state:
-    - colocate_state: true
-  lists:
-    - stable_unique_keys: true`,
+The engine injects framework-aware guidelines:
 
-    express: `FRAMEWORK: Express
-BEST_PRACTICES:
-  middleware:
-    - correct_order: true
-    - error_handlers_last: true
-  async_handling:
-    - use_async_await_with_try_catch: true
-  validation:
-    - validate_all_user_input: true
-  security:
-    - use_helmet: true
-    - implement_rate_limiting: true`,
+- **NestJS**: DI patterns, exception filters, DTO validation
+- **Next.js**: Server components, data fetching, API routes
+- **React**: Hooks rules, effect cleanup, state management
+- **Express**: Middleware order, async handling, security
+- **Vanilla**: TypeScript best practices, null safety
 
-    vanilla: `FRAMEWORK: TypeScript/JavaScript
-BEST_PRACTICES:
-  types:
-    - avoid_any: true
-  async:
-    - handle_promise_rejections: true
-  errors:
-    - throw_typed_errors: true
-  null_safety:
-    - check_null_undefined: true`
-  };
+See implementation for complete framework instructions.
 
-  return instructions[frameworkName] || instructions.vanilla;
-}
-```
+## Performance Characteristics
 
-### BUILD_REVIEW_CONTEXT
-```typescript
-private buildReviewContext(
-  analysis: PRAnalysis,
-  strategy: ReviewStrategy
-): string {
-  return `REVIEW_CONTEXT:
-  framework: ${analysis.context.framework.name}
-  version: ${analysis.context.framework.version || "unknown"}
-  affected_areas: ${JSON.stringify(analysis.context.affectedAreas)}
-  flags:
-    critical_module: ${analysis.context.flags.criticalModule}
-    test_changed: ${analysis.context.flags.testChanged}
-    schema_changed: ${analysis.context.flags.schemaChanged}
-    config_only: ${analysis.context.flags.configOnly}
-
-STRATEGY: ${strategy.name}
-INSTRUCTIONS: ${strategy.instructions}
-
-${this.projectConventions ? `PROJECT_CONVENTIONS:\n${this.projectConventions}\n` : ''}
-
-DIFF:
-\`\`\`diff
-${analysis.prioritizedDiff}
-\`\`\`
-
-OUTPUT_SCHEMA:
-{
-  "issues": [
-    {
-      "file": "string",
-      "line": "number|undefined",
-      "type": "bug|security|performance|maintainability",
-      "confidence": "high|medium",
-      "title": "string",
-      "description": "string",
-      "suggestion": "string|undefined"
-    }
-  ],
-  "consensus": {
-    "totalReviewed": "number",
-    "issuesRaised": "number",
-    "issuesFiltered": "number",
-    "overallAssessment": "string"
-  }
-}
-
-RESPOND_WITH_VALID_JSON_ONLY`;
-}
-```
-
-### PARSE_REVIEW_RESPONSE
-```typescript
-private parseReviewResponse(responseText: string): ReviewIssue[] {
-  try {
-    // With JSON schema mode, response is guaranteed valid JSON
-    const parsed = JSON.parse(responseText);
-
-    if (!parsed.issues || !Array.isArray(parsed.issues)) {
-      logger.warn("⚠️ Invalid response format, no issues array");
-      return [];
-    }
-
-    return parsed.issues.map((issue: any) => ({
-      file: issue.file,
-      line: issue.line,
-      type: issue.type,
-      confidence: issue.confidence,
-      title: issue.title,
-      description: issue.description,
-      suggestion: issue.suggestion
-    }));
-  } catch (error) {
-    logger.error(`Failed to parse review response: ${error}`);
-    logger.debug(`Response text: ${responseText.substring(0, 500)}`);
-    return [];
-  }
-}
-```
-
-### GENERATE_SUMMARY
-```typescript
-private generateSummary(
-  issues: ReviewIssue[],
-  analysis: PRAnalysis
-): ReviewSummary {
-  const criticalIssues = issues.filter(
-    i => i.type === "security" || i.type === "bug"
-  ).length;
-
-  let overallAssessment: string;
-
-  if (issues.length === 0) {
-    overallAssessment = "✅ No significant issues found. Code looks good.";
-  } else if (criticalIssues > 0) {
-    overallAssessment = `⚠️ Found ${criticalIssues} critical issue(s) that should be addressed before merging.`;
-  } else {
-    overallAssessment = `Found ${issues.length} issue(s) to consider for improved code quality.`;
-  }
-
-  return {
-    totalIssues: issues.length,
-    criticalIssues,
-    affectedAreas: analysis.context.affectedAreas,
-    overallAssessment
-  };
-}
-```
-
-## BEHAVIOR_SPECIFICATIONS
-
-### SCENARIO: No Issues Found
-```yaml
-given:
-  - clean_pr_with_no_problems
-when:
-  - generateReview() called
-then:
-  - issues: []
-  - summary.overallAssessment: "✅ No significant issues found"
-  - metadata.filesReviewed: > 0
-```
-
-### SCENARIO: Critical Security Issue
-```yaml
-given:
-  - pr_with_sql_injection_vulnerability
-when:
-  - generateReview() called
-then:
-  - issues.length: > 0
-  - issues[0].type: "security"
-  - issues[0].confidence: "high"
-  - summary.criticalIssues: > 0
-```
-
-### SCENARIO: False Positive Filtered
-```yaml
-given:
-  - nestjs_pr_with_throw_error
-  - fpPatterns includes nestjs-throw-error-with-filter
-when:
-  - generateReview() called
-then:
-  - issues: []
-  - consensus.issuesFiltered: > 0
-```
-
-### SCENARIO: Large PR Token Limit
-```yaml
-given:
-  - pr_size: 800KB
-  - strategy: xlarge (4000 tokens)
-when:
-  - generateReview() called
-then:
-  - prompt includes only prioritized files
-  - critical files included
-  - low priority files may be excluded
-```
-
-## PERFORMANCE_TARGETS
 ```yaml
 latency:
   small_pr: <5s
@@ -434,29 +140,58 @@ accuracy:
   json_parse_success: 100%
 
 cost:
-  per_review_with_cache: <$0.01
-  per_review_without_cache: <$0.10
+  with_prompt_caching: <$0.01 per review
+  without_caching: <$0.10 per review
 ```
 
-## TEST_CASES
-```typescript
-// test_no_issues.ts
-const analysis: PRAnalysis = createCleanPRAnalysis();
-const result = await engine.generateReview(analysis, strategy, []);
-assert(result.issues.length === 0);
-assert(result.summary.overallAssessment.includes("✅"));
+## Key Behaviors
 
-// test_security_issue.ts
-const analysis: PRAnalysis = createSQLInjectionPRAnalysis();
-const result = await engine.generateReview(analysis, strategy, []);
-assert(result.issues.length > 0);
-assert(result.issues[0].type === "security");
-assert(result.summary.criticalIssues > 0);
+### Scenario: Clean PR
+- Input: PR with no issues
+- Output: Empty issues array, "✅ No significant issues found"
 
-// test_false_positive.ts
-const fpPatterns: FalsePositivePattern[] = [NESTJS_THROW_ERROR_PATTERN];
-const analysis: PRAnalysis = createNestJSThrowErrorPRAnalysis();
-const result = await engine.generateReview(analysis, strategy, fpPatterns);
-assert(result.issues.length === 0);
-```
+### Scenario: Critical Security Issue
+- Input: PR with SQL injection vulnerability
+- Output: Issue with type="security", confidence="high"
 
+### Scenario: False Positive Filtered
+- Input: NestJS PR with `throw new Error` pattern
+- FP Pattern: `nestjs-throw-error-with-filter`
+- Output: No issues reported (filtered by Owl persona)
+
+### Scenario: Token Limit Reached
+- Input: Large PR (800KB)
+- Strategy: xlarge (4000 tokens)
+- Behavior: Only prioritized critical files included in prompt
+
+## Design Rationale
+
+### Why Single API Call?
+- **50% cost reduction** vs. two separate API calls
+- Maintains consensus benefits
+- Faster review generation
+- Better prompt caching efficiency
+
+### Why JSON Schema Mode?
+- Guaranteed valid JSON responses
+- No parsing failures
+- Structured output for GitHub comments
+- Easier testing and validation
+
+### Why Project Conventions?
+- Respects team-specific patterns
+- Reduces false positives on intentional choices
+- Improves context awareness
+- Loaded from `CLAUDE.md`, `principles/`, etc.
+
+## Testing
+
+For test cases and fixtures, see:
+- Unit tests: [`tests/unit/consensus-engine.test.ts`](../../tests/unit/consensus-engine.test.ts)
+- Integration tests: [`tests/integration/consensus-flow.test.ts`](../../tests/integration/consensus-flow.test.ts)
+
+## Related Specs
+
+- [`claude-api.spec.md`](../adapters/claude-api.spec.md) - API client used for LLM calls
+- [`consensus-prompt.spec.md`](../prompts/consensus-prompt.spec.md) - Prompt templates
+- [`types.spec.md`](./types.spec.md) - Type definitions
