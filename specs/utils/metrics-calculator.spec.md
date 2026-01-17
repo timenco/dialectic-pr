@@ -1,87 +1,58 @@
-# METRICS CALCULATOR SPECIFICATION
+# Metrics Calculator
 
-## DEPENDENCIES
+## Purpose
+
+Analyzes PR diffs and file lists to extract quantitative metrics about the change, including line counts, affected files, and token estimates for API usage.
+
+## Location
+
+[src/utils/metrics-calculator.ts](../../src/utils/metrics-calculator.ts)
+
+## Dependencies
+
 ```yaml
 internal:
   - core/types.spec.md
 external: []
 ```
 
-## FILE_PATH
-```
-src/utils/metrics-calculator.ts
-```
+## Core Responsibility
 
-## CLASS_INTERFACE
+- Count added and deleted lines from unified diff format
+- Calculate total diff size in bytes
+- Identify core/critical files based on directory patterns
+- Categorize files by language (TypeScript vs JavaScript)
+- Estimate token count for API cost prediction
+- Return structured metrics for logging and strategy selection
+
+## Key Interface
+
 ```typescript
 export class MetricsCalculator {
   calculate(diff: string, files: string[]): PRMetrics;
   estimateTokens(content: string): number;
 }
-```
 
-## IMPLEMENTATION
-```typescript
-import { PRMetrics } from "../core/types.js";
-
-export class MetricsCalculator {
-  calculate(diff: string, files: string[]): PRMetrics {
-    const lines = diff.split("\n");
-    
-    let addedLines = 0;
-    let deletedLines = 0;
-    
-    for (const line of lines) {
-      if (line.startsWith("+") && !line.startsWith("+++")) {
-        addedLines++;
-      } else if (line.startsWith("-") && !line.startsWith("---")) {
-        deletedLines++;
-      }
-    }
-    
-    const coreFileCount = files.filter(f => 
-      f.match(/src\/(auth|payments|billing|security|core)\//)
-    ).length;
-    
-    const tsFileCount = files.filter(f => f.endsWith(".ts") || f.endsWith(".tsx")).length;
-    const jsFileCount = files.filter(f => f.endsWith(".js") || f.endsWith(".jsx")).length;
-    
-    return {
-      fileCount: files.length,
-      addedLines,
-      deletedLines,
-      diffSize: Buffer.byteLength(diff, "utf8"),
-      coreFileCount,
-      tsFileCount,
-      jsFileCount
-    };
-  }
-  
-  estimateTokens(content: string): number {
-    // Approximation: 4 chars ≈ 1 token
-    return Math.ceil(content.length / 4);
-  }
+interface PRMetrics {
+  fileCount: number;
+  addedLines: number;
+  deletedLines: number;
+  diffSize: number;
+  coreFileCount: number;
+  tsFileCount: number;
+  jsFileCount: number;
 }
 ```
 
-## TEST_CASES
-```yaml
-test_empty_diff:
-  input: ""
-  output:
-    fileCount: 0
-    addedLines: 0
-    deletedLines: 0
-    diffSize: 0
+## Calculation Logic
 
-test_simple_addition:
-  input: "+console.log('hello');"
-  output:
-    addedLines: 1
-    deletedLines: 0
+**Line counting**: Parses unified diff format, counting lines starting with `+` (added) or `-` (deleted), excluding file headers (`+++`, `---`).
 
-test_token_estimation:
-  input: "1234" # 4 chars
-  output: 1 # 1 token
-```
+**Core files**: Files in critical directories like `src/auth/`, `src/payments/`, `src/billing/`, `src/security/`, `src/core/`.
 
+**Token estimation**: Approximates 4 characters = 1 token (conservative estimate for Claude API).
+
+## Related Specs
+
+- [types.spec.md](../core/types.spec.md) - PRMetrics type definition
+- [strategy-selector.spec.md](../strategies/strategy-selector.spec.md) - Uses metrics for strategy selection

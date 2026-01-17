@@ -1,18 +1,31 @@
-# PRIVACY GUARD SPECIFICATION
+# Privacy Guard
 
-## DEPENDENCIES
+## Purpose
+
+Protects sensitive data by validating environment variables, displaying data privacy notices, and detecting secrets in code diffs before they're sent to external APIs.
+
+## Location
+
+[src/security/privacy-guard.ts](../../src/security/privacy-guard.ts)
+
+## Dependencies
+
 ```yaml
 internal:
-  - core/types.spec.md
+  - core/types.spec.md (ValidationError)
 external: []
 ```
 
-## FILE_PATH
-```
-src/security/privacy-guard.ts
-```
+## Core Responsibility
 
-## CLASS_INTERFACE
+- Display data privacy disclaimer about sending code to Claude API
+- Validate required environment variables are present
+- Scan diffs for common secret patterns before API submission
+- Block review if secrets detected
+- Provide clear security error messages
+
+## Key Interface
+
 ```typescript
 export class PrivacyGuard {
   displayDisclaimer(): void;
@@ -21,82 +34,24 @@ export class PrivacyGuard {
 }
 ```
 
-## IMPLEMENTATION
-```typescript
-import { ValidationError } from "../core/types.js";
+## Secret Detection Patterns
 
-export class PrivacyGuard {
-  displayDisclaimer(): void {
-    console.log(`
-╔════════════════════════════════════════════════════════════════════╗
-║  ⚠️  DATA PRIVACY NOTICE                                           ║
-║                                                                    ║
-║  Your code diff will be sent to Anthropic's Claude API for        ║
-║  analysis. By continuing, you acknowledge this data transfer.     ║
-║                                                                    ║
-║  To exclude sensitive files, configure 'exclude_patterns' in      ║
-║  your .github/dialectic-pr.json                                   ║
-║                                                                    ║
-║  Docs: https://github.com/dialectic-pr/dialectic-pr#privacy       ║
-╚════════════════════════════════════════════════════════════════════╝
-    `);
-  }
+Scans for common secret indicators:
+- API keys, tokens, passwords in variable assignments
+- Private keys (RSA, DSA, EC, OpenSSH)
+- OpenAI-style keys (`sk-*`)
+- GitHub personal access tokens (`ghp_*`)
 
-  validateEnvironment(requiredVars: string[]): void {
-    const missing = requiredVars.filter(v => !process.env[v]);
-    
-    if (missing.length > 0) {
-      throw new ValidationError(
-        `Missing required environment variables: ${missing.join(", ")}`
-      );
-    }
-  }
+Throws security error immediately if any pattern matches, aborting the review.
 
-  validateNoSecrets(diff: string): void {
-    const secretPatterns = [
-      /['"]?[a-zA-Z_]*(?:API_KEY|SECRET|TOKEN|PASSWORD)['"]?\s*[:=]\s*['"][^'"]+['"]/gi,
-      /-----BEGIN (?:RSA|DSA|EC|OPENSSH) PRIVATE KEY-----/,
-      /sk-[a-zA-Z0-9]{20,}/,  // OpenAI-style keys
-      /ghp_[a-zA-Z0-9]{36}/,  // GitHub personal access tokens
-    ];
+## Privacy Disclaimer
 
-    for (const pattern of secretPatterns) {
-      if (pattern.test(diff)) {
-        throw new Error(
-          "⚠️ SECURITY: Potential secret detected in diff. Review aborted. " +
-          "Remove secrets before committing."
-        );
-      }
-    }
-  }
-}
-```
+Displays a prominent notice that:
+- Code will be sent to Anthropic's Claude API
+- Users can configure `exclude_patterns` to skip sensitive files
+- Links to privacy documentation
 
-## SECRET_PATTERNS
-```yaml
-api_keys:
-  - API_KEY|SECRET|TOKEN|PASSWORD followed by value
-  
-private_keys:
-  - BEGIN RSA|DSA|EC|OPENSSH PRIVATE KEY
-  
-tokens:
-  - sk-* (OpenAI style)
-  - ghp_* (GitHub tokens)
-```
+## Related Specs
 
-## TEST_CASES
-```yaml
-test_clean_diff:
-  input: "console.log('hello');"
-  assert: no_exception
-
-test_api_key_detected:
-  input: "API_KEY = 'secret123'"
-  assert: throws_error
-
-test_private_key_detected:
-  input: "-----BEGIN RSA PRIVATE KEY-----"
-  assert: throws_error
-```
-
+- [exclude-filter.spec.md](./exclude-filter.spec.md) - File-level exclusion (complementary to secret detection)
+- [types.spec.md](../core/types.spec.md) - ValidationError type

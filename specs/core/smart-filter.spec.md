@@ -1,258 +1,164 @@
-# SMART FILTER SPECIFICATION
+# Smart Filter
 
-## DEPENDENCIES
+## Purpose
+
+Intelligent file prioritization system that manages token budgets by ranking files based on their importance and ensuring critical files are reviewed first.
+
+## Location
+
+→ [`src/core/smart-filter.ts`](../../src/core/smart-filter.ts)
+
+## Dependencies
+
 ```yaml
 internal:
-  - core/types.spec.md
-  - utils/logger.spec.md
-  - utils/metrics-calculator.spec.md
-external: []
+  - core/types → ChangedFile, PrioritizedFile, FilePriority, PriorityRule
+  - utils/metrics-calculator → Token estimation
 ```
 
-## FILE_PATH
-```
-src/core/smart-filter.ts
-```
+## Core Responsibility
 
-## CLASS_INTERFACE
+Maximize review quality within token constraints:
+1. Assign priority levels to files based on patterns
+2. Sort files by priority (critical → high → normal → low)
+3. Truncate file list to fit token budget
+4. Report which files were excluded
+5. Support custom priority rules
+
+## Key Interface
+
 ```typescript
-export class SmartFilter {
-  constructor(customRules?: PriorityRule[]);
-  prioritizeFiles(files: ChangedFile[]): PrioritizedFile[];
-  truncateToTokenLimit(
-    prioritizedFiles: PrioritizedFile[],
-    tokenLimit: number
-  ): { included: PrioritizedFile[]; excluded: PrioritizedFile[] };
-  getPriorityStats(files: PrioritizedFile[]): Record<FilePriority, number>;
-  addCustomRules(rules: PriorityRule[]): void;
-}
-```
+class SmartFilter {
+  constructor(customRules?: PriorityRule[])
 
-## DEFAULT_PRIORITY_RULES
-```typescript
-const DEFAULT_RULES: PriorityRule[] = [
-  // Critical: Security and core business logic
-  {
-    pattern: /src\/(auth|payments|billing|security)\//,
-    priority: "critical",
-    reason: "Security-critical module"
-  },
-  {
-    pattern: /src\/core\//,
-    priority: "critical",
-    reason: "Core business logic"
-  },
-  {
-    pattern: /\.(controller|guard|middleware)\.ts$/,
-    priority: "critical",
-    reason: "HTTP security layer"
-  },
-  
-  // High: Important source code
-  {
-    pattern: /src\/.*\.(ts|tsx|js|jsx)$/,
-    priority: "high",
-    reason: "Source code"
-  },
-  {
-    pattern: /\.(service|repository|handler)\.(ts|js)$/,
-    priority: "high",
-    reason: "Business layer"
-  },
-  {
-    pattern: /\.entity\.ts$/,
-    priority: "high",
-    reason: "Database schema"
-  },
-  
-  // Normal: General code
-  {
-    pattern: /\.(ts|tsx|js|jsx)$/,
-    priority: "normal",
-    reason: "Code file"
-  },
-  
-  // Low: Tests and config
-  {
-    pattern: /\.test\.(ts|tsx|js|jsx)$/,
-    priority: "low",
-    reason: "Test file"
-  },
-  {
-    pattern: /\.spec\.(ts|tsx|js|jsx)$/,
-    priority: "low",
-    reason: "Spec file"
-  },
-  {
-    pattern: /\.(md|txt|json|yaml|yml)$/,
-    priority: "low",
-    reason: "Config/Doc file"
-  }
-];
-```
-
-## IMPLEMENTATION
-```typescript
-import {
-  ChangedFile,
-  FilePriority,
-  PrioritizedFile,
-  PriorityRule
-} from "./types.js";
-import { logger } from "../utils/logger.js";
-import { MetricsCalculator } from "../utils/metrics-calculator.js";
-
-export class SmartFilter {
-  private readonly metricsCalculator = new MetricsCalculator();
-  private readonly defaultPriorityRules: PriorityRule[] = DEFAULT_RULES;
-
-  constructor(private customRules: PriorityRule[] = []) {}
-
-  prioritizeFiles(files: ChangedFile[]): PrioritizedFile[] {
-    const allRules = [...this.defaultPriorityRules, ...this.customRules];
-
-    return files
-      .map(file => ({
-        path: file.path,
-        content: file.content,
-        priority: this.determinePriority(file.path, allRules),
-        reason: this.getPriorityReason(file.path, allRules)
-      }))
-      .sort(
-        (a, b) =>
-          this.priorityOrder(a.priority) - this.priorityOrder(b.priority)
-      );
-  }
+  prioritizeFiles(files: ChangedFile[]): PrioritizedFile[]
 
   truncateToTokenLimit(
     prioritizedFiles: PrioritizedFile[],
     tokenLimit: number
-  ): { included: PrioritizedFile[]; excluded: PrioritizedFile[] } {
-    const included: PrioritizedFile[] = [];
-    const excluded: PrioritizedFile[] = [];
-    let currentTokens = 0;
+  ): { included: PrioritizedFile[]; excluded: PrioritizedFile[] }
 
-    for (const file of prioritizedFiles) {
-      const fileTokens = this.metricsCalculator.estimateTokens(file.content);
-
-      if (currentTokens + fileTokens <= tokenLimit) {
-        included.push(file);
-        currentTokens += fileTokens;
-      } else {
-        excluded.push(file);
-      }
-    }
-
-    if (excluded.length > 0) {
-      logger.warn(
-        `⚠️ Token limit reached. ${excluded.length} files excluded:`
-      );
-      excluded
-        .slice(0, 5)
-        .forEach(f =>
-          logger.warn(`   - ${f.path} (${f.priority}: ${f.reason})`)
-        );
-      if (excluded.length > 5) {
-        logger.warn(`   ... and ${excluded.length - 5} more`);
-      }
-    }
-
-    logger.info(`📊 Included: ${included.length} files (~${currentTokens} tokens)`);
-    logger.info(`📊 Excluded: ${excluded.length} files`);
-
-    return { included, excluded };
-  }
-
-  getPriorityStats(files: PrioritizedFile[]): Record<FilePriority, number> {
-    const stats: Record<FilePriority, number> = {
-      critical: 0,
-      high: 0,
-      normal: 0,
-      low: 0
-    };
-
-    for (const file of files) {
-      stats[file.priority]++;
-    }
-
-    return stats;
-  }
-
-  addCustomRules(rules: PriorityRule[]): void {
-    this.customRules.push(...rules);
-  }
-
-  private determinePriority(
-    filePath: string,
-    rules: PriorityRule[]
-  ): FilePriority {
-    for (const rule of rules) {
-      if (this.matchesPattern(filePath, rule.pattern)) {
-        return rule.priority;
-      }
-    }
-    return "low";
-  }
-
-  private getPriorityReason(filePath: string, rules: PriorityRule[]): string {
-    for (const rule of rules) {
-      if (this.matchesPattern(filePath, rule.pattern)) {
-        return rule.reason;
-      }
-    }
-    return "Unknown file type";
-  }
-
-  private matchesPattern(filePath: string, pattern: RegExp | string): boolean {
-    if (typeof pattern === "string") {
-      return filePath.includes(pattern);
-    }
-    return pattern.test(filePath);
-  }
-
-  private priorityOrder(priority: FilePriority): number {
-    const order = { critical: 0, high: 1, normal: 2, low: 3 };
-    return order[priority];
-  }
+  getPriorityStats(files: PrioritizedFile[]): Record<FilePriority, number>
+  addCustomRules(rules: PriorityRule[]): void
 }
 ```
 
-## BEHAVIOR
-```yaml
-file_src_auth_service_ts:
-  matched_rule: "src/(auth|...)"
-  priority: critical
-  reason: "Security-critical module"
+## Priority Levels
 
-file_src_utils_helper_ts:
-  matched_rule: "src/.*\\.(ts|...)"
-  priority: high
-  reason: "Source code"
+### Critical
+- Security modules: `**/auth/**`, `**/payments/**`, `**/billing/**`, `**/security/**`
+- Core business logic: `**/core/**`
+- HTTP security layer: `*.controller.ts`, `*.guard.ts`, `*.middleware.ts`
 
-file_README_md:
-  matched_rule: "\\.(md|...)"
-  priority: low
-  reason: "Config/Doc file"
-```
+### High
+- Source code in src: `src/**/*.{ts,tsx,js,jsx}`
+- Business layer: `*.service.ts`, `*.repository.ts`, `*.handler.ts`
+- Database schema: `*.entity.ts`
 
-## TEST_CASES
-```yaml
-test_critical_priority:
-  input: "src/auth/auth.service.ts"
-  assert:
-    priority: critical
+### Normal
+- General code files: `*.{ts,tsx,js,jsx}`
+- Utilities and helpers
+
+### Low
+- Test files: `*.test.ts`, `*.spec.ts`
+- Config files: `*.json`, `*.yaml`, `*.yml`
+- Documentation: `*.md`, `*.txt`
+
+## How It Works
+
+### 1. File Prioritization
+```typescript
+const rules: PriorityRule[] = [
+  {
+    pattern: /src\/(auth|payments)\//,
+    priority: "critical",
     reason: "Security-critical module"
-
-test_sorting:
-  input: [low_file, critical_file, high_file]
-  assert: [critical_file, high_file, low_file]
-
-test_token_truncation:
-  input:
-    files: [critical_1k_tokens, high_2k_tokens]
-    limit: 2000
-  assert:
-    included: [critical_1k_tokens]
-    excluded: [high_2k_tokens]
+  },
+  // ... more rules
+]
 ```
 
+### 2. Priority Assignment
+Each file is matched against rules (first match wins):
+```
+src/auth/auth.service.ts → critical (Security-critical module)
+src/users/users.service.ts → high (Business layer)
+src/utils/helpers.ts → normal (Code file)
+README.md → low (Documentation)
+```
+
+### 3. Sorting
+Files sorted by priority order: `critical < high < normal < low`
+
+### 4. Token Budget Management
+```typescript
+const { included, excluded } = smartFilter.truncateToTokenLimit(
+  prioritizedFiles,
+  tokenLimit
+)
+```
+
+Includes files until token budget exhausted, warns about exclusions.
+
+## Custom Rules
+
+Projects can add framework-specific or custom rules:
+
+```typescript
+const nestjsRules: PriorityRule[] = [
+  {
+    pattern: /\.dto\.ts$/,
+    priority: "high",
+    reason: "Input validation DTO"
+  }
+]
+
+smartFilter.addCustomRules(nestjsRules)
+```
+
+## Token Estimation
+
+Uses simple heuristic: **1 token ≈ 4 characters**
+
+More accurate estimation possible via tokenizer libraries if needed.
+
+## Behavior on Token Limit
+
+When token limit reached:
+1. Include as many high-priority files as possible
+2. Log excluded files with their priority and reason
+3. Return both included and excluded lists
+4. Console warning for visibility
+
+Example output:
+```
+⚠️ Token limit reached. 12 files excluded from review:
+   - tests/auth.test.ts (low: Test file)
+   - README.md (low: Documentation)
+   - src/utils/cache.ts (normal: Code file)
+   ... and 9 more
+```
+
+## Integration with PR Analyzer
+
+```
+PR Analyzer
+  ↓ (all changed files)
+Smart Filter
+  ↓ (prioritized files)
+Truncate to Token Limit
+  ↓ (included files only)
+Consensus Engine
+```
+
+## Performance
+
+- **O(n × m)** where n = files, m = rules
+- Typically < 1ms for < 100 files
+- No I/O operations (pure computation)
+
+## Related Specs
+
+- [`analyzer.spec.md`](./analyzer.spec.md) - Uses SmartFilter for prioritization
+- [`strategy-selector.spec.md`](./strategy-selector.spec.md) - Provides token limits
+- [`types.spec.md`](./types.spec.md) - Priority type definitions

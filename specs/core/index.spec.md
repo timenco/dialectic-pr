@@ -1,100 +1,105 @@
-# NPM PACKAGE EXPORTS SPECIFICATION
+# NPM Package Exports
 
-## DEPENDENCIES
-```yaml
-internal:
-  - all_implemented_modules
-external: []
-```
+## Purpose
 
-## FILE_PATH
-```
-src/index.ts
-```
+Main entry point for `@dialectic-pr/core` npm package, exporting all public APIs for programmatic usage.
 
-## EXPORTS
+## Location
+
+→ [`src/index.ts`](../../src/index.ts)
+
+## Exported Modules
+
+### Core Types
 ```typescript
-// Core Types
-export * from "./core/types.js";
+export * from "./core/types.js"
+```
+All TypeScript interfaces and types for the system.
 
-// Core Components
-export { PRAnalyzer } from "./core/analyzer.js";
-export { SmartFilter } from "./core/smart-filter.js";
-export { StrategySelector } from "./core/strategy-selector.js";
-export { ConsensusEngine } from "./core/consensus-engine.js";
-
-// Adapters
-export { ClaudeAdapter } from "./adapters/claude-api.js";
-export { GitHubAdapter } from "./adapters/github-api.js";
-export { RetryHandler } from "./adapters/retry-handler.js";
-
-// Security
-export { PrivacyGuard } from "./security/privacy-guard.js";
-export { ExcludeFilter } from "./security/exclude-filter.js";
-
-// Frameworks
-export { FrameworkDetector } from "./frameworks/detector.js";
-
-// Utils
-export { logger } from "./utils/logger.js";
-export { ConfigLoader } from "./utils/config-loader.js";
-export { MetricsCalculator } from "./utils/metrics-calculator.js";
+### Core Components
+```typescript
+export { PRAnalyzer } from "./core/analyzer.js"
+export { SmartFilter } from "./core/smart-filter.js"
+export { StrategySelector } from "./core/strategy-selector.js"
+export { ConsensusEngine } from "./core/consensus-engine.js"
 ```
 
-## PACKAGE_JSON
+### Adapters
+```typescript
+export { ClaudeAdapter } from "./adapters/claude-api.js"
+export { GitHubAdapter } from "./adapters/github-api.js"
+export { RetryHandler } from "./adapters/retry-handler.js"
+```
+
+### Security
+```typescript
+export { PrivacyGuard } from "./security/privacy-guard.js"
+export { ExcludeFilter } from "./security/exclude-filter.js"
+```
+
+### Frameworks
+```typescript
+export { FrameworkDetector } from "./frameworks/detector.js"
+```
+
+### Utilities
+```typescript
+export { logger } from "./utils/logger.js"
+export { ConfigLoader } from "./utils/config-loader.js"
+export { MetricsCalculator } from "./utils/metrics-calculator.js"
+```
+
+## Package Configuration
+
+### package.json
 ```json
 {
   "name": "@dialectic-pr/core",
   "version": "1.0.0",
-  "description": "AI Code Reviewer for TypeScript Projects",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
     "dialectic-pr": "./dist/cli.js"
   },
-  "files": [
-    "dist",
-    "config",
-    "templates"
-  ],
-  "scripts": {
-    "build": "tsc",
-    "test": "jest",
-    "lint": "eslint src --ext .ts"
-  },
-  "keywords": [
-    "code-review",
-    "ai",
-    "typescript",
-    "claude",
-    "github-actions"
-  ],
-  "author": "Dialectic PR",
-  "license": "MIT",
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.30.0",
-    "@octokit/rest": "^20.0.0",
-    "commander": "^11.0.0",
-    "minimatch": "^9.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "@types/jest": "^29.0.0",
-    "typescript": "^5.3.0",
-    "jest": "^29.0.0",
-    "eslint": "^8.0.0",
-    "prettier": "^3.0.0"
-  },
-  "engines": {
-    "node": ">=18"
-  }
+  "files": ["dist", "config", "templates"]
 }
 ```
 
-## TEST
-```yaml
-test_exports:
-  action: import all exports in test file
-  assert: all imports succeed without errors
+### Key Dependencies
+- `@anthropic-ai/sdk` - Claude API client
+- `@octokit/rest` - GitHub API client
+- `commander` - CLI framework
+- `minimatch` - File pattern matching
+
+## Usage
+
+### As CLI (Primary)
+```bash
+npx @dialectic-pr/core
+npx @dialectic-pr/core init
 ```
 
+### As Library (Advanced)
+```typescript
+import {
+  PRAnalyzer,
+  ConsensusEngine,
+  ClaudeAdapter,
+  type PRAnalysis,
+  type ReviewResult
+} from "@dialectic-pr/core"
+
+// Build custom workflows
+const analyzer = new PRAnalyzer(...)
+const engine = new ConsensusEngine(...)
+```
+
+## Engine Requirements
+
+- Node.js >= 18
+- TypeScript 5.3+
+
+## Related Files
+
+- CLI implementation: [`cli.spec.md`](./cli.spec.md)
+- Type definitions: [`types.spec.md`](./types.spec.md)
