@@ -32,31 +32,7 @@ export class SmartFilter {
       reason: "HTTP security layer",
     },
 
-    // High: 중요 소스 코드
-    {
-      pattern: /src\/.*\.(ts|tsx|js|jsx|py|java|go)$/,
-      priority: "high",
-      reason: "Source code",
-    },
-    {
-      pattern: /\.(service|repository|handler)\.(ts|js)$/,
-      priority: "high",
-      reason: "Business layer",
-    },
-    {
-      pattern: /\.entity\.ts$/,
-      priority: "high",
-      reason: "Database schema",
-    },
-
-    // Normal: 일반 코드
-    {
-      pattern: /\.(ts|tsx|js|jsx|py|java|go)$/,
-      priority: "normal",
-      reason: "Code file",
-    },
-
-    // Low: 낮은 우선순위
+    // Low: 낮은 우선순위 (먼저 체크하여 테스트 파일이 high로 매칭되지 않도록)
     {
       pattern: /\.test\.(ts|tsx|js|jsx)$/,
       priority: "low",
@@ -71,6 +47,30 @@ export class SmartFilter {
       pattern: /\.(md|txt|json|yaml|yml)$/,
       priority: "low",
       reason: "Config/Doc file",
+    },
+
+    // High: 중요 소스 코드 (구체적인 패턴 먼저)
+    {
+      pattern: /\.(service|repository|handler)\.(ts|js)$/,
+      priority: "high",
+      reason: "Business layer",
+    },
+    {
+      pattern: /\.entity\.ts$/,
+      priority: "high",
+      reason: "Database schema",
+    },
+    {
+      pattern: /src\/.*\.(ts|tsx|js|jsx|py|java|go)$/,
+      priority: "high",
+      reason: "Source code",
+    },
+
+    // Normal: 일반 코드
+    {
+      pattern: /\.(ts|tsx|js|jsx|py|java|go)$/,
+      priority: "normal",
+      reason: "Code file",
     },
   ];
 
