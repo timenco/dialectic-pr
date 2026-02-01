@@ -4,7 +4,6 @@ import {
   ClaudeOptions,
   ClaudeResponse,
   TokenUsage,
-  CachedSystemMessage,
   AdvancedClaudeOptions,
   CodeReviewSchema,
 } from "../core/types.js";
