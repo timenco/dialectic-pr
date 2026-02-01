@@ -144,8 +144,8 @@ describe("SmartFilter", () => {
         { path: "low.ts", content: "x".repeat(100), priority: "low" as const, reason: "test" },
       ];
 
-      // Limit that fits only 2 files
-      const result = filter.truncateToTokenLimit(files, 75);
+      // Limit that fits only 2 files (100 chars = 25 tokens, so 50 tokens = 2 files)
+      const result = filter.truncateToTokenLimit(files, 50);
       expect(result.included.length).toBe(2);
       expect(result.included[0].priority).toBe("critical");
       expect(result.included[1].priority).toBe("high");

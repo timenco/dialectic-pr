@@ -22,7 +22,7 @@ const program = new Command();
 program
   .name("dialectic-pr")
   .description("The AI Code Reviewer for TypeScript Projects")
-  .version("0.1.0");
+  .version("1.0.0");
 
 /**
  * init 명령어: 초기 설정 파일 생성
@@ -170,7 +170,7 @@ jobs:
 async function reviewCommand(
   options: CLIOptions,
   dryRun: boolean,
-  forceReview: boolean
+  _forceReview: boolean
 ): Promise<void> {
   logger.section("Dialectic PR Review");
 

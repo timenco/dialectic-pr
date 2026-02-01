@@ -2,7 +2,6 @@ import {
   PRAnalysis,
   ChangedFile,
   ContextFlags,
-  PRContext,
   GitHubPRInfo,
 } from "./types.js";
 import { ExcludeFilter } from "../security/exclude-filter.js";

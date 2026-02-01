@@ -1,7 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import {
   GitHubPRInfo,
-  GitHubComment,
   BatchReviewParams,
   APIError,
 } from "../core/types.js";

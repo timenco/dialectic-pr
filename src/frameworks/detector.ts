@@ -149,19 +149,11 @@ export class FrameworkDetector {
   /**
    * Express 감지
    */
-  private isExpress(pkg: PackageJson, files: string[]): boolean {
+  private isExpress(pkg: PackageJson, _files: string[]): boolean {
     // package.json에 express 의존성 확인
     if (this.hasDependency(pkg, "express")) {
       return true;
     }
-
-    // Express 파일 패턴 확인 (신뢰도 낮음)
-    const expressPatterns = [
-      "app.listen(",
-      "express()",
-      "app.get(",
-      "app.post(",
-    ];
 
     // 파일 내용까지 확인하려면 비용이 크므로 의존성만 확인
     return false;

@@ -95,7 +95,7 @@ describe("StrategySelector", () => {
       const analysis = createMockAnalysis(100000, false, true); // 100KB but config only
       const strategy = selector.select(analysis);
       expect(strategy.name).toBe("small");
-      expect(strategy.instructions).toContain("Config");
+      expect(strategy.instructions).toContain("configuration");
     });
 
     it("should boost token budget for critical modules", () => {
