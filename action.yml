@@ -1,0 +1,40 @@
+name: "Dialectic PR Review"
+description: "AI code reviewer for TypeScript projects with multi-persona consensus"
+author: "timenco"
+
+inputs:
+  anthropic_api_key:
+    description: "Anthropic API key"
+    required: true
+  github_token:
+    description: "GitHub token for PR access"
+    required: true
+    default: "${{ github.token }}"
+  config_path:
+    description: "Path to dialectic-pr.json"
+    required: false
+    default: ".github/dialectic-pr.json"
+  log_level:
+    description: "Log level (debug|info|warn|error)"
+    required: false
+    default: "info"
+  dry_run:
+    description: "Run without posting review"
+    required: false
+    default: "false"
+
+outputs:
+  issues_count:
+    description: "Total issues found"
+  critical_count:
+    description: "Critical issues found"
+  review_posted:
+    description: "Whether the review was posted"
+
+runs:
+  using: "node20"
+  main: "dist/action/index.js"
+
+branding:
+  icon: "eye"
+  color: "purple"

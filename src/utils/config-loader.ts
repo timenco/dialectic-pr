@@ -11,6 +11,8 @@ import { logger } from "./logger.js";
 export class ConfigLoader {
   private readonly defaultConfig: DialecticConfig = {
     model: "claude-sonnet-4-20250514",
+    language: undefined,
+    context_files: [],
     exclude_patterns: [],
     strategies: {
       small: { maxTokens: 16000 },
@@ -46,6 +48,7 @@ export class ConfigLoader {
       const mergedConfig: DialecticConfig = {
         ...this.defaultConfig,
         ...userConfig,
+        context_files: userConfig.context_files || [],
         strategies: {
           ...this.defaultConfig.strategies,
           ...userConfig.strategies,

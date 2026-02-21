@@ -1,0 +1,158 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
+  "title": "Dialectic PR Configuration",
+  "description": "Configuration file for Dialectic PR — AI Code Reviewer for TypeScript Projects",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema URL for editor support"
+    },
+    "model": {
+      "type": "string",
+      "description": "Claude model to use for review",
+      "default": "claude-sonnet-4-20250514",
+      "examples": [
+        "claude-sonnet-4-20250514",
+        "claude-opus-4-20250514"
+      ]
+    },
+    "language": {
+      "type": "string",
+      "description": "Review output language (ISO 639-1 code)",
+      "examples": ["en", "ko", "ja", "zh"]
+    },
+    "context_files": {
+      "type": "array",
+      "description": "Additional context files to include in the review (relative to repo root)",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["CLAUDE.md", "principles/refactoring-pipeline.md"]]
+    },
+    "exclude_patterns": {
+      "type": "array",
+      "description": "Glob patterns for files to exclude from review",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "strategies": {
+      "type": "object",
+      "description": "Token budget per PR size strategy",
+      "properties": {
+        "small": {
+          "type": "object",
+          "properties": {
+            "maxTokens": { "type": "number" }
+          },
+          "required": ["maxTokens"]
+        },
+        "medium": {
+          "type": "object",
+          "properties": {
+            "maxTokens": { "type": "number" }
+          },
+          "required": ["maxTokens"]
+        },
+        "large": {
+          "type": "object",
+          "properties": {
+            "maxTokens": { "type": "number" }
+          },
+          "required": ["maxTokens"]
+        },
+        "xlarge": {
+          "type": "object",
+          "properties": {
+            "maxTokens": { "type": "number" }
+          },
+          "required": ["maxTokens"]
+        }
+      }
+    },
+    "false_positive_patterns": {
+      "type": "array",
+      "description": "Custom false positive patterns to suppress known-safe review findings",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the pattern"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["sql-injection", "error-handling", "dependency-injection", "logging", "authentication", "validation", "performance", "custom"],
+            "description": "Pattern category"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Why this is a false positive"
+          },
+          "falsePositiveIndicators": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Text patterns in AI review output that indicate this false positive"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"]
+          }
+        },
+        "required": ["id", "category", "explanation", "falsePositiveIndicators"]
+      },
+      "default": []
+    },
+    "framework_specific": {
+      "type": "object",
+      "description": "Framework-specific configuration",
+      "properties": {
+        "nestjs": {
+          "type": "object",
+          "properties": {
+            "disabled_builtin_patterns": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "custom_patterns": { "type": "array" },
+            "priority_modules": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Modules to prioritize in review (e.g. auth, payments)"
+            }
+          }
+        },
+        "nextjs": {
+          "type": "object",
+          "properties": {
+            "app_router": { "type": "boolean" },
+            "check_client_components": { "type": "boolean" }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "conventions": {
+      "type": "object",
+      "description": "Project conventions configuration",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Paths to convention files (relative to repo root)"
+        },
+        "sections": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
