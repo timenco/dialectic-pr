@@ -167,7 +167,8 @@ BEST_PRACTICES:
 export class ConsensusEngine {
   constructor(
     private claudeAdapter: ClaudeAdapter,
-    private projectConventions?: string
+    private projectConventions?: string,
+    private language?: string
   ) {}
 
   /**
@@ -238,7 +239,7 @@ export class ConsensusEngine {
     frameworkName: FrameworkName,
     fpPatterns: FalsePositivePattern[]
   ): CachedSystemMessage[] {
-    return [
+    const messages: CachedSystemMessage[] = [
       // 1. Agent consensus instructions (never changes, always cached)
       {
         type: "text",
@@ -258,6 +259,26 @@ export class ConsensusEngine {
         cache_control: { type: "ephemeral" },
       },
     ];
+
+    // 4. Language instruction (if non-English)
+    if (this.language && this.language !== "en") {
+      messages.push({
+        type: "text",
+        text: `RESPONSE_LANGUAGE: You MUST write ALL review output in ${this.getLanguageName(this.language)}.`,
+        cache_control: { type: "ephemeral" },
+      });
+    }
+
+    return messages;
+  }
+
+  private getLanguageName(code: string): string {
+    const map: Record<string, string> = {
+      ko: "Korean (한국어)",
+      ja: "Japanese (日本語)",
+      zh: "Chinese (中文)",
+    };
+    return map[code] || code;
   }
 
   /**

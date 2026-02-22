@@ -1,6 +1,6 @@
 /**
- * @dialectic-pr/core
- * The AI Code Reviewer for TypeScript Projects
+ * Dialectic PR
+ * AI code reviewer for TypeScript projects with multi-persona consensus
  */
 
 // Core Types
@@ -11,6 +11,7 @@ export { PRAnalyzer } from "./core/analyzer.js";
 export { SmartFilter } from "./core/smart-filter.js";
 export { StrategySelector } from "./core/strategy-selector.js";
 export { ConsensusEngine } from "./core/consensus-engine.js";
+export { runReview } from "./core/review-engine.js";
 
 // Adapters
 export { ClaudeAdapter } from "./adapters/claude-api.js";

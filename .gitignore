@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build output (action bundle must be committed for GitHub Actions)
 dist/
+!dist/action/
 build/
 
 # Logs

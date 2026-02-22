@@ -161,6 +161,31 @@ export interface ReviewMetadata {
 }
 
 // ============================================================================
+// Review Engine
+// ============================================================================
+
+export interface ReviewOptions {
+  anthropicApiKey: string;
+  githubToken: string;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  baseBranch: string;
+  configPath?: string;
+  dryRun?: boolean;
+  forceReview?: boolean;
+  logLevel?: "debug" | "info" | "warn" | "error";
+}
+
+export interface ReviewOutput {
+  issues: ReviewIssue[];
+  summary: ReviewSummary;
+  metadata: ReviewMetadata;
+  commentBody: string;
+  posted: boolean;
+}
+
+// ============================================================================
 // API Adapters
 // ============================================================================
 
@@ -279,6 +304,8 @@ export interface CLIOptions {
 
 export interface DialecticConfig {
   model: string;
+  language?: string;
+  context_files?: string[];
   exclude_patterns: string[];
   strategies: StrategyConfig;
   false_positive_patterns: FalsePositivePattern[];
