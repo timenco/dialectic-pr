@@ -1,6 +1,6 @@
 /**
- * @dialectic-pr/core
- * The AI Code Reviewer for TypeScript Projects
+ * Dialectic PR
+ * AI code reviewer for TypeScript projects with multi-persona consensus
  */
 
 // Core Types

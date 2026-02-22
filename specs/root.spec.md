@@ -21,8 +21,7 @@
 
 ### Distribution
 
-- **npm Package**: `@dialectic-pr/core`
-- **Usage**: `npx @dialectic-pr/core` in GitHub Actions
+- **GitHub Action**: `uses: timenco/dialectic-pr@v1`
 - **License**: MIT
 
 ## Architecture
@@ -81,7 +80,8 @@ For detailed architecture, see → [`00-overview.md`](./00-overview.md)
 dialectic-pr/
 ├── src/
 │   ├── cli.ts                    # CLI entry point
-│   ├── index.ts                  # npm package exports
+│   ├── action.ts                 # GitHub Action entry point
+│   ├── index.ts                  # module exports
 │   ├── core/                     # Core engine
 │   ├── frameworks/               # Framework detection
 │   ├── adapters/                 # External API adapters
@@ -128,8 +128,8 @@ See → [`integration/phase1-checklist.spec.md`](./integration/phase1-checklist.
 - Framework-specific fixtures
 - Documentation
 
-### Phase 5: Publishing (Week 4)
-- npm publishing preparation
+### Phase 5: GitHub Action Release (Week 4)
+- GitHub Action packaging (action.yml, ncc bundle)
 - Example projects (NestJS, Next.js, React+Express)
 - Before/After comparison materials
 - v1.0.0 release
@@ -140,7 +140,7 @@ See → [`integration/phase1-checklist.spec.md`](./integration/phase1-checklist.
 
 ```json
 {
-  "$schema": "https://unpkg.com/@dialectic-pr/core/config/dialectic-pr-schema.json",
+  "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
   "model": "claude-sonnet-4-20250514",
   "exclude_patterns": ["**/.env*", "**/secrets/**"],
   "false_positive_patterns": [
@@ -166,20 +166,22 @@ name: Dialectic PR Review
 on:
   pull_request:
     types: [opened, synchronize, labeled]
-
+permissions:
+  contents: read
+  pull-requests: write
 jobs:
   review:
     runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.draft == false &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-ai-review')
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Dialectic PR Review
-        run: npx @dialectic-pr/core
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: timenco/dialectic-pr@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ## Success Metrics
@@ -196,7 +198,6 @@ jobs:
 - Documentation read time: **< 15 min**
 
 ### Business Metrics
-- npm weekly downloads: **> 100** (first month)
 - GitHub Stars: **> 50** (first month)
 - Issue response time: **< 24 hours**
 
@@ -225,10 +226,10 @@ jobs:
 - Performance regression detection
 - Review history analysis
 
-### v1.4: Multi-Language (Separate Packages)
-- `@dialectic-pr/python` - Django, FastAPI, Flask
-- `@dialectic-pr/go` - Gin, Echo, Chi
-- `@dialectic-pr/rust` - Actix, Rocket, Axum
+### v1.4: Multi-Language
+- Python support - Django, FastAPI, Flask
+- Go support - Gin, Echo, Chi
+- Rust support - Actix, Rocket, Axum
 
 ### v1.5: Enterprise Features
 - On-premise Claude (AWS Bedrock)
@@ -287,10 +288,9 @@ jobs:
 
 ## Getting Started
 
-1. Install: `npm install -D @dialectic-pr/core`
-2. Initialize: `npx @dialectic-pr/core init`
-3. Add API key to GitHub Secrets: `ANTHROPIC_API_KEY`
-4. Open a PR and get your first review!
+1. Add `uses: timenco/dialectic-pr@v1` to your workflow
+2. Add API key to GitHub Secrets: `ANTHROPIC_API_KEY`
+3. Open a PR and get your first review!
 
 For detailed setup, see README.md in the repository root.
 

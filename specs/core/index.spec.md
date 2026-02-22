@@ -1,8 +1,8 @@
-# NPM Package Exports
+# Module Exports
 
 ## Purpose
 
-Main entry point for `@dialectic-pr/core` npm package, exporting all public APIs for programmatic usage.
+Main entry point for Dialectic PR, exporting all public APIs for internal module usage.
 
 ## Location
 
@@ -22,6 +22,7 @@ export { PRAnalyzer } from "./core/analyzer.js"
 export { SmartFilter } from "./core/smart-filter.js"
 export { StrategySelector } from "./core/strategy-selector.js"
 export { ConsensusEngine } from "./core/consensus-engine.js"
+export { runReview } from "./core/review-engine.js"
 ```
 
 ### Adapters
@@ -49,50 +50,12 @@ export { ConfigLoader } from "./utils/config-loader.js"
 export { MetricsCalculator } from "./utils/metrics-calculator.js"
 ```
 
-## Package Configuration
-
-### package.json
-```json
-{
-  "name": "@dialectic-pr/core",
-  "version": "1.0.0",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "bin": {
-    "dialectic-pr": "./dist/cli.js"
-  },
-  "files": ["dist", "config", "templates"]
-}
-```
-
-### Key Dependencies
+## Key Dependencies
 - `@anthropic-ai/sdk` - Claude API client
 - `@octokit/rest` - GitHub API client
-- `commander` - CLI framework
+- `@actions/core` - GitHub Action runtime
+- `@actions/github` - GitHub Action context
 - `minimatch` - File pattern matching
-
-## Usage
-
-### As CLI (Primary)
-```bash
-npx @dialectic-pr/core
-npx @dialectic-pr/core init
-```
-
-### As Library (Advanced)
-```typescript
-import {
-  PRAnalyzer,
-  ConsensusEngine,
-  ClaudeAdapter,
-  type PRAnalysis,
-  type ReviewResult
-} from "@dialectic-pr/core"
-
-// Build custom workflows
-const analyzer = new PRAnalyzer(...)
-const engine = new ConsensusEngine(...)
-```
 
 ## Engine Requirements
 

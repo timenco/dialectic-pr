@@ -110,7 +110,7 @@ step_7_cli:
 step_8_entry_point:
   - specs/core/index.spec.md
     output: src/index.ts
-    test: npm package exports work
+    test: module exports work
 ```
 
 ## END_TO_END_TEST_SCENARIO
@@ -128,12 +128,12 @@ steps:
     - PR includes intentional security issue
   
   2_execute:
-    - run: npx ts-node src/cli.ts
+    - run: node dist/cli.js review
     - environment:
         ANTHROPIC_API_KEY: $API_KEY
         GITHUB_TOKEN: $GITHUB_TOKEN
         GITHUB_REPOSITORY: owner/repo
-        GITHUB_EVENT_PULL_REQUEST_NUMBER: 123
+        GITHUB_EVENT_PATH: /path/to/event.json
   
   3_verify:
     - CLI exits with code 0

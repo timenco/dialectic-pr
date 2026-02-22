@@ -1,12 +1,10 @@
 {
-  "name": "@dialectic-pr/core",
+  "name": "dialectic-pr",
   "version": "1.0.0",
-  "description": "The AI Code Reviewer for TypeScript Projects",
+  "description": "AI code reviewer for TypeScript projects with multi-persona consensus",
   "type": "module",
+  "private": true,
   "main": "dist/index.js",
-  "bin": {
-    "dialectic-pr": "dist/cli.js"
-  },
   "scripts": {
     "build": "tsc",
     "build:action": "ncc build dist/action.js -o dist/action --source-map --license licenses.txt",
@@ -15,34 +13,14 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "prepublishOnly": "npm run build"
+    "format": "prettier --write \"src/**/*.ts\""
   },
-  "keywords": [
-    "ai",
-    "code-review",
-    "github",
-    "typescript",
-    "nestjs",
-    "nextjs",
-    "react",
-    "claude"
-  ],
   "author": "Dialectic PR Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dialectic-pr/core.git"
+    "url": "git+https://github.com/timenco/dialectic-pr.git"
   },
-  "bugs": {
-    "url": "https://github.com/dialectic-pr/core/issues"
-  },
-  "homepage": "https://github.com/dialectic-pr/core#readme",
-  "files": [
-    "dist",
-    "config",
-    "templates"
-  ],
   "engines": {
     "node": ">=18.0.0"
   },

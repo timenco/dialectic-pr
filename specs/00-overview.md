@@ -9,7 +9,7 @@ version: 1.0.0
 target_language: typescript
 runtime: node >= 18
 package_manager: npm
-deployment: npm_package + github_actions
+deployment: github_action
 ```
 
 ## ARCHITECTURE_GRAPH
@@ -68,8 +68,9 @@ consensus_review: single_api_call_multi_persona
 ## FILE_STRUCTURE
 ```
 src/
-  cli.ts                       # entry_point
-  index.ts                     # npm_exports
+  action.ts                    # github_action_entry_point
+  cli.ts                       # cli_entry_point (local debugging)
+  index.ts                     # module_exports
   core/
     types.ts                   # dependency: none
     analyzer.ts                # dependency: types, security, frameworks, smart-filter
