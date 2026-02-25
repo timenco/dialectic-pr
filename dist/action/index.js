@@ -49894,6 +49894,7 @@ class ConfigLoader {
         model: "claude-sonnet-4-20250514",
         language: undefined,
         context_files: [],
+        false_positive_files: [],
         exclude_patterns: [],
         strategies: {
             small: { maxTokens: 16000 },
@@ -49923,6 +49924,7 @@ class ConfigLoader {
                 ...this.defaultConfig,
                 ...userConfig,
                 context_files: userConfig.context_files || [],
+                false_positive_files: userConfig.false_positive_files || [],
                 strategies: {
                     ...this.defaultConfig.strategies,
                     ...userConfig.strategies,
@@ -50002,6 +50004,58 @@ class ConfigLoader {
         return conventions.join("\n\n---\n\n");
     }
     /**
+     * 외부 FP 패턴 파일 로드
+     * @param repoPath 저장소 루트 경로
+     * @param filePaths FP 패턴 파일 경로 배열 (저장소 루트 기준 상대 경로)
+     */
+    async loadFalsePositiveFiles(repoPath, filePaths) {
+        const patterns = [];
+        for (const filePath of filePaths) {
+            const fullPath = (0,external_path_.join)(repoPath, filePath);
+            if (!(0,external_fs_.existsSync)(fullPath)) {
+                logger.warn(`False positive file not found: ${filePath}`);
+                continue;
+            }
+            try {
+                const content = await (0,promises_namespaceObject.readFile)(fullPath, "utf-8");
+                const parsed = JSON.parse(content);
+                // 배열 형식 [...] 또는 객체 형식 { patterns: [...] } 모두 지원
+                const rawPatterns = Array.isArray(parsed)
+                    ? parsed
+                    : parsed.patterns;
+                if (!Array.isArray(rawPatterns)) {
+                    logger.warn(`Invalid format in ${filePath}: expected array or { patterns: [...] }`);
+                    continue;
+                }
+                for (const raw of rawPatterns) {
+                    if (this.isValidFPPattern(raw)) {
+                        patterns.push(raw);
+                    }
+                    else {
+                        logger.warn(`Skipping invalid pattern in ${filePath}: missing required fields (id, category, explanation, falsePositiveIndicators)`);
+                    }
+                }
+                logger.info(`Loaded ${rawPatterns.length} FP patterns from ${filePath}`);
+            }
+            catch (error) {
+                logger.warn(`Failed to load FP file ${filePath}: ${error}`);
+            }
+        }
+        return patterns;
+    }
+    /**
+     * FP 패턴 유효성 검증
+     */
+    isValidFPPattern(raw) {
+        if (typeof raw !== "object" || raw === null)
+            return false;
+        const obj = raw;
+        return (typeof obj.id === "string" &&
+            typeof obj.category === "string" &&
+            typeof obj.explanation === "string" &&
+            Array.isArray(obj.falsePositiveIndicators));
+    }
+    /**
      * 기본 설정 가져오기
      */
     getDefaultConfig() {
@@ -50009,7 +50063,803 @@ class ConfigLoader {
     }
 }
 //# sourceMappingURL=config-loader.js.map
+;// CONCATENATED MODULE: ./dist/false-positive/builtin-patterns.js
+/**
+ * Built-in False Positive Patterns
+ * TypeScript/JavaScript 생태계에서 흔히 발생하는 False Positive 패턴들
+ */
+const BUILTIN_PATTERNS = [
+    // ============================================================================
+    // SQL Injection & Database
+    // ============================================================================
+    {
+        id: "prisma-tagged-template-safe",
+        category: "sql-injection",
+        pattern: /\$executeRaw`.*\$\{.*\}`/,
+        explanation: "Prisma tagged template literals auto-escape all ${} values, preventing SQL injection",
+        severity: "critical",
+        falsePositiveIndicators: [
+            "SQL Injection in Prisma $executeRaw",
+            "parameter binding bypass",
+            "constant directly inserted",
+            "unsafe raw query",
+        ],
+    },
+    {
+        id: "prisma-queryraw-safe",
+        category: "sql-injection",
+        pattern: /\$queryRaw`.*\$\{.*\}`/,
+        explanation: "Prisma $queryRaw with tagged template is parameterized and safe",
+        severity: "critical",
+        falsePositiveIndicators: [
+            "SQL injection in queryRaw",
+            "unparameterized query",
+        ],
+    },
+    {
+        id: "prisma-queryrawsafe-params",
+        category: "sql-injection",
+        pattern: /\$queryRawSafe\(.*\$\d+/,
+        explanation: "$queryRawSafe with $1, $2 placeholders passes all subsequent arguments as parameterized values, preventing SQL injection",
+        severity: "critical",
+        falsePositiveIndicators: [
+            "SQL injection in queryRawSafe",
+            "$queryRawSafe is unsafe",
+            "parameter not bound",
+            "queryRawSafe bypass",
+        ],
+    },
+    {
+        id: "typeorm-query-builder",
+        category: "sql-injection",
+        explanation: "TypeORM QueryBuilder with parameters (:param) is safe from SQL injection",
+        falsePositiveIndicators: [
+            "SQL injection in QueryBuilder",
+            "unsanitized input in query",
+        ],
+    },
+    {
+        id: "knex-parameterized",
+        category: "sql-injection",
+        explanation: "Knex.js with ? placeholders or object syntax is parameterized",
+        falsePositiveIndicators: [
+            "SQL injection in Knex query",
+            "raw SQL vulnerability",
+        ],
+    },
+    // ============================================================================
+    // Error Handling
+    // ============================================================================
+    {
+        id: "nestjs-throw-error-with-filter",
+        category: "error-handling",
+        explanation: "AllExceptionsFilter in NestJS converts all errors to proper HTTP responses without exposing internals",
+        contextRequired: ["AllExceptionsFilter", "common/filters"],
+        severity: "high",
+        falsePositiveIndicators: [
+            "throw new Error should be InternalServerErrorException",
+            "DB error exposure risk",
+            "internal error leaked to client",
+        ],
+    },
+    {
+        id: "express-error-middleware",
+        category: "error-handling",
+        explanation: "Express error middleware with 4 parameters handles errors centrally",
+        falsePositiveIndicators: [
+            "unhandled error in route",
+            "error not caught",
+            "missing error handling",
+        ],
+    },
+    {
+        id: "async-error-wrapper",
+        category: "error-handling",
+        explanation: "Async error wrapper utilities (express-async-handler, catchAsync) handle promise rejections",
+        falsePositiveIndicators: [
+            "unhandled promise rejection",
+            "missing try-catch in async",
+            "promise rejection not handled",
+        ],
+    },
+    {
+        id: "intentional-throw",
+        category: "error-handling",
+        explanation: "Throwing errors in validation or business logic is intentional control flow",
+        falsePositiveIndicators: [
+            "should not throw here",
+            "use return instead of throw",
+        ],
+    },
+    // ============================================================================
+    // Dependency Injection
+    // ============================================================================
+    {
+        id: "nestjs-constructor-di",
+        category: "dependency-injection",
+        explanation: "NestJS manages DI lifecycle; 'new' keyword is intentional for DTOs, entities, and value objects",
+        falsePositiveIndicators: [
+            "should use dependency injection instead of new",
+            "tight coupling with new keyword",
+            "manual instantiation anti-pattern",
+        ],
+    },
+    {
+        id: "nestjs-inject-decorator",
+        category: "dependency-injection",
+        explanation: "@Inject() for custom providers and tokens is correct NestJS pattern",
+        falsePositiveIndicators: [
+            "use constructor injection",
+            "@Inject is unnecessary",
+        ],
+    },
+    {
+        id: "inversify-inject",
+        category: "dependency-injection",
+        explanation: "InversifyJS @inject decorators are standard DI pattern",
+        falsePositiveIndicators: [
+            "avoid decorator injection",
+            "use constructor params",
+        ],
+    },
+    // ============================================================================
+    // Logging
+    // ============================================================================
+    {
+        id: "nestjs-logger-pattern",
+        category: "logging",
+        explanation: "Logger with constructor name (new Logger(ClassName.name)) is standard NestJS pattern",
+        falsePositiveIndicators: [
+            "Logger should not use DI",
+            "new Logger(ClassName.name) is anti-pattern",
+            "should inject Logger",
+        ],
+    },
+    {
+        id: "console-in-cli",
+        category: "logging",
+        explanation: "console.log in CLI tools and scripts is acceptable and intentional",
+        falsePositiveIndicators: [
+            "remove console.log",
+            "use proper logger instead of console",
+            "console statement should be removed",
+        ],
+    },
+    {
+        id: "debug-logging",
+        category: "logging",
+        explanation: "Debug logging statements may be intentional for development",
+        falsePositiveIndicators: [
+            "debug log should be removed",
+            "verbose logging unnecessary",
+        ],
+    },
+    // ============================================================================
+    // Authentication & Security
+    // ============================================================================
+    {
+        id: "jwt-secret-env",
+        category: "authentication",
+        explanation: "JWT secrets loaded from environment variables are secure",
+        falsePositiveIndicators: [
+            "hardcoded JWT secret",
+            "secret should not be in code",
+        ],
+    },
+    {
+        id: "bcrypt-rounds",
+        category: "authentication",
+        explanation: "bcrypt with 10-12 rounds is industry standard",
+        falsePositiveIndicators: [
+            "insufficient hash rounds",
+            "weak password hashing",
+        ],
+    },
+    {
+        id: "auth-decorator",
+        category: "authentication",
+        explanation: "Custom auth decorators (@Auth, @Public) are valid patterns",
+        falsePositiveIndicators: [
+            "missing authentication check",
+            "unprotected endpoint",
+        ],
+    },
+    // ============================================================================
+    // Validation
+    // ============================================================================
+    {
+        id: "class-validator-dto",
+        category: "validation",
+        explanation: "class-validator decorators on DTOs handle input validation",
+        falsePositiveIndicators: [
+            "missing input validation",
+            "unvalidated user input",
+            "should validate input",
+        ],
+    },
+    {
+        id: "zod-schema",
+        category: "validation",
+        explanation: "Zod schemas provide runtime type validation",
+        falsePositiveIndicators: [
+            "type not validated at runtime",
+            "missing validation",
+        ],
+    },
+    {
+        id: "joi-schema",
+        category: "validation",
+        explanation: "Joi schemas validate input data",
+        falsePositiveIndicators: [
+            "input not validated",
+            "missing schema validation",
+        ],
+    },
+    // ============================================================================
+    // TypeScript Specific
+    // ============================================================================
+    {
+        id: "ts-any-intentional",
+        category: "validation",
+        explanation: "Some 'any' types are intentional for third-party lib compatibility or dynamic data",
+        falsePositiveIndicators: [
+            "should not use any",
+            "replace any with proper type",
+            "any is dangerous",
+            "avoid using any",
+        ],
+    },
+    {
+        id: "ts-type-assertion",
+        category: "validation",
+        explanation: "Type assertions (as X) may be intentional for known-safe type narrowing",
+        falsePositiveIndicators: [
+            "avoid type assertions",
+            "type assertion is unsafe",
+            "use type guard instead",
+        ],
+    },
+    {
+        id: "ts-non-null-assertion",
+        category: "validation",
+        explanation: "Non-null assertion (!) may be valid when nullability is guaranteed by prior checks",
+        falsePositiveIndicators: [
+            "avoid non-null assertion",
+            "! operator is dangerous",
+            "use optional chaining",
+        ],
+    },
+    {
+        id: "ts-empty-interface",
+        category: "validation",
+        explanation: "Empty interfaces may be intentional for future extension or type branding",
+        falsePositiveIndicators: [
+            "empty interface",
+            "interface has no members",
+        ],
+    },
+    // ============================================================================
+    // React Specific
+    // ============================================================================
+    {
+        id: "react-empty-deps",
+        category: "validation",
+        explanation: "Empty dependency array [] is correct for mount-only effects",
+        falsePositiveIndicators: [
+            "missing dependencies in useEffect",
+            "empty dependency array",
+            "exhaustive deps warning",
+        ],
+    },
+    {
+        id: "react-memo-optimization",
+        category: "performance",
+        explanation: "React.memo is a valid performance optimization pattern",
+        falsePositiveIndicators: [
+            "unnecessary memo",
+            "premature optimization",
+            "memo is not needed",
+        ],
+    },
+    {
+        id: "react-index-key-static",
+        category: "validation",
+        explanation: "Index as key is acceptable for static, non-reorderable lists",
+        falsePositiveIndicators: [
+            "don't use index as key",
+            "index key is anti-pattern",
+        ],
+    },
+    {
+        id: "react-eslint-disable",
+        category: "validation",
+        explanation: "eslint-disable comments for hooks deps may be intentional",
+        falsePositiveIndicators: [
+            "remove eslint-disable",
+            "fix the underlying issue",
+        ],
+    },
+    // ============================================================================
+    // Next.js Specific
+    // ============================================================================
+    {
+        id: "nextjs-server-component",
+        category: "validation",
+        explanation: "Async Server Components without useEffect are the correct Next.js 13+ pattern",
+        falsePositiveIndicators: [
+            "async component without useEffect",
+            "should use useEffect for data",
+            "missing loading state",
+        ],
+    },
+    {
+        id: "nextjs-use-client",
+        category: "validation",
+        explanation: "'use client' directive marks intentional client components",
+        falsePositiveIndicators: [
+            "use client unnecessary",
+            "should be server component",
+        ],
+    },
+    {
+        id: "nextjs-default-export",
+        category: "validation",
+        explanation: "Default exports for pages/layouts are required Next.js convention",
+        falsePositiveIndicators: [
+            "prefer named exports",
+            "default export anti-pattern",
+        ],
+    },
+    // ============================================================================
+    // Express Specific
+    // ============================================================================
+    {
+        id: "express-middleware-order",
+        category: "validation",
+        explanation: "Middleware order is intentional architecture decision",
+        falsePositiveIndicators: [
+            "middleware order wrong",
+            "reorder middleware",
+            "incorrect placement",
+        ],
+    },
+    {
+        id: "express-error-handler-params",
+        category: "error-handling",
+        explanation: "Error handler with 4 params (err, req, res, next) is Express convention",
+        falsePositiveIndicators: [
+            "unused next parameter",
+            "unused error parameter",
+        ],
+    },
+    {
+        id: "express-res-json-return",
+        category: "validation",
+        explanation: "res.json() without explicit return is valid when it's the last statement",
+        falsePositiveIndicators: [
+            "missing return before res",
+            "should return res.json",
+        ],
+    },
+    // ============================================================================
+    // Database & ORM Advanced
+    // ============================================================================
+    {
+        id: "prisma-bigint-serialization-check",
+        category: "custom",
+        explanation: "BigInt serialization warnings require checking the Prisma schema first — fields defined as BigInt in schema.prisma are intentionally BigInt, not Int",
+        falsePositiveIndicators: [
+            "BigInt should be Int",
+            "BigInt serialization error",
+            "use Number instead of BigInt",
+            "BigInt is not serializable",
+        ],
+    },
+    // ============================================================================
+    // Intentional Code Patterns
+    // ============================================================================
+    {
+        id: "null-undefined-intentional-separation",
+        category: "validation",
+        explanation: "null (explicit DB absence) and undefined (optional/unset) are intentionally separated — this is a common TypeScript pattern for distinguishing DB null from unset fields",
+        falsePositiveIndicators: [
+            "use null instead of undefined",
+            "use undefined instead of null",
+            "inconsistent null/undefined usage",
+            "null과 undefined를 혼용",
+            "null/undefined 일관성",
+        ],
+    },
+];
+/**
+ * Get built-in patterns by category
+ */
+function getPatternsByCategory(category) {
+    return BUILTIN_PATTERNS.filter((p) => p.category === category);
+}
+/**
+ * Get pattern by ID
+ */
+function getPatternById(id) {
+    return BUILTIN_PATTERNS.find((p) => p.id === id);
+}
+/**
+ * Get all pattern IDs
+ */
+function getAllPatternIds() {
+    return BUILTIN_PATTERNS.map((p) => p.id);
+}
+//# sourceMappingURL=builtin-patterns.js.map
+;// CONCATENATED MODULE: ./dist/frameworks/base-framework.js
+/**
+ * Base Framework Implementation
+ * 모든 프레임워크의 기본 구현을 제공합니다.
+ */
+class BaseFramework {
+    /**
+     * 기본 False Positive 패턴 (공통)
+     */
+    getFalsePositivePatterns() {
+        return [
+            {
+                id: "console-log-intentional",
+                category: "logging",
+                explanation: "Console.log in development/debug code may be intentional",
+                falsePositiveIndicators: [
+                    "console.log should be removed",
+                    "use proper logging",
+                ],
+            },
+            {
+                id: "any-type-intentional",
+                category: "validation",
+                explanation: "Some 'any' types are intentional for flexibility",
+                falsePositiveIndicators: [
+                    "avoid using any",
+                    "use proper type",
+                ],
+            },
+        ];
+    }
+    /**
+     * 기본 영향 영역 감지 (공통)
+     */
+    detectAffectedAreas(files) {
+        const areas = [];
+        // Common critical areas
+        if (files.some((f) => f.includes("/auth/"))) {
+            areas.push("🔐 Auth");
+        }
+        if (files.some((f) => f.includes("/payments/") || f.includes("/billing/"))) {
+            areas.push("💳 Payments");
+        }
+        if (files.some((f) => f.includes("/security/"))) {
+            areas.push("🔒 Security");
+        }
+        if (files.some((f) => f.includes("/api/"))) {
+            areas.push("🔌 API");
+        }
+        if (files.some((f) => this.isTestFile(f))) {
+            areas.push("🧪 Tests");
+        }
+        return areas;
+    }
+    /**
+     * 기본 우선순위 규칙 (공통)
+     */
+    getPriorityRules() {
+        return [
+            // Critical: Security-related
+            {
+                pattern: /\/(auth|security|payments|billing)\//,
+                priority: "critical",
+                reason: "Security-critical module",
+            },
+            // High: Source code
+            {
+                pattern: /src\/.*\.(ts|tsx|js|jsx)$/,
+                priority: "high",
+                reason: "Source code",
+            },
+            // Normal: General code
+            {
+                pattern: /\.(ts|tsx|js|jsx)$/,
+                priority: "normal",
+                reason: "Code file",
+            },
+            // Low: Tests and configs
+            {
+                pattern: /\.(test|spec)\.(ts|tsx|js|jsx)$/,
+                priority: "low",
+                reason: "Test file",
+            },
+            {
+                pattern: /\.(json|yaml|yml|md)$/,
+                priority: "low",
+                reason: "Config/Doc file",
+            },
+        ];
+    }
+    /**
+     * Critical 모듈 확인 (기본)
+     */
+    isCriticalModule(filePath) {
+        const criticalPatterns = [
+            /\/(auth|security|payments|billing)\//,
+            /\.(guard|middleware)\.(ts|js)$/,
+        ];
+        return criticalPatterns.some((p) => p.test(filePath));
+    }
+    /**
+     * 컨텍스트 플래그 추출 (기본)
+     */
+    extractContextFlags(files) {
+        return {
+            testChanged: files.some((f) => this.isTestFile(f)),
+            schemaChanged: files.some((f) => this.isSchemaFile(f)),
+            criticalModule: files.some((f) => this.isCriticalModule(f)),
+            configOnly: files.every((f) => this.isConfigFile(f)),
+        };
+    }
+    /**
+     * 테스트 파일인지 확인
+     */
+    isTestFile(filePath) {
+        return (filePath.includes(".test.") ||
+            filePath.includes(".spec.") ||
+            filePath.includes("/__tests__/") ||
+            filePath.includes("/tests/"));
+    }
+    /**
+     * 스키마 파일인지 확인
+     */
+    isSchemaFile(filePath) {
+        return (filePath.includes(".entity.") ||
+            filePath.includes(".schema.") ||
+            filePath.includes(".model.") ||
+            filePath.includes("/migrations/"));
+    }
+    /**
+     * 설정 파일인지 확인
+     */
+    isConfigFile(filePath) {
+        const configExtensions = [".json", ".yaml", ".yml", ".toml", ".ini", ".md"];
+        const configNames = [
+            "package.json",
+            "tsconfig.json",
+            "jest.config",
+            "vite.config",
+            "next.config",
+            ".eslintrc",
+            ".prettierrc",
+        ];
+        return (configExtensions.some((ext) => filePath.endsWith(ext)) ||
+            configNames.some((name) => filePath.includes(name)));
+    }
+}
+/**
+ * Framework Registry
+ * 사용 가능한 모든 프레임워크 구현체를 관리합니다.
+ */
+class FrameworkRegistry {
+    static frameworks = new Map();
+    /**
+     * 프레임워크 등록
+     */
+    static register(framework) {
+        this.frameworks.set(framework.name, framework);
+    }
+    /**
+     * 프레임워크 가져오기
+     */
+    static get(name) {
+        return this.frameworks.get(name);
+    }
+    /**
+     * 모든 등록된 프레임워크 이름 가져오기
+     */
+    static getRegisteredNames() {
+        return Array.from(this.frameworks.keys());
+    }
+    /**
+     * 프레임워크가 등록되어 있는지 확인
+     */
+    static has(name) {
+        return this.frameworks.has(name);
+    }
+}
+//# sourceMappingURL=base-framework.js.map
+;// CONCATENATED MODULE: ./dist/false-positive/project-rules-loader.js
+
+
+
+
+
+
+/**
+ * Project Rules Loader
+ * 프로젝트별 False Positive 규칙과 컨벤션을 로드합니다.
+ */
+class ProjectRulesLoader {
+    /**
+     * 프로젝트 규칙 로드
+     * @param repoPath 저장소 루트 경로
+     * @param frameworkName 감지된 프레임워크 이름
+     */
+    async load(repoPath, frameworkName) {
+        logger.info("📜 Loading project rules...");
+        // 1. Load project config if exists
+        const config = await this.loadProjectConfig(repoPath);
+        // 2. Get builtin patterns (excluding disabled ones)
+        let patterns = this.getEnabledBuiltinPatterns(config);
+        // 3. Add framework-specific patterns
+        patterns = this.addFrameworkPatterns(patterns, frameworkName, config);
+        // 4. Add project-specific custom patterns
+        if (config?.false_positive_patterns) {
+            patterns = [...patterns, ...config.false_positive_patterns];
+            logger.debug(`Added ${config.false_positive_patterns.length} custom patterns from config`);
+        }
+        // 5. Load conventions
+        const conventions = await this.loadConventions(repoPath, config);
+        // 6. Get exclude patterns
+        const excludePatterns = config?.exclude_patterns || [];
+        const rules = {
+            patterns,
+            conventions,
+            excludePatterns,
+            overrides: config?.framework_specific,
+        };
+        logger.success(`✅ Loaded ${patterns.length} FP patterns, ${excludePatterns.length} exclude patterns`);
+        return rules;
+    }
+    /**
+     * Load project configuration from dialectic-pr.json
+     */
+    async loadProjectConfig(repoPath) {
+        const configPaths = [
+            (0,external_path_.join)(repoPath, ".github/dialectic-pr.json"),
+            (0,external_path_.join)(repoPath, "dialectic-pr.json"),
+            (0,external_path_.join)(repoPath, ".dialectic-pr.json"),
+        ];
+        for (const configPath of configPaths) {
+            if ((0,external_fs_.existsSync)(configPath)) {
+                try {
+                    const content = await (0,promises_namespaceObject.readFile)(configPath, "utf-8");
+                    const config = JSON.parse(content);
+                    logger.debug(`Loaded config from ${configPath}`);
+                    return config;
+                }
+                catch (error) {
+                    logger.warn(`Failed to parse config from ${configPath}: ${error}`);
+                }
+            }
+        }
+        logger.debug("No project config found, using defaults");
+        return null;
+    }
+    /**
+     * Get enabled builtin patterns (filter out disabled ones)
+     */
+    getEnabledBuiltinPatterns(config) {
+        const disabledIds = config?.disabled_builtin_patterns || [];
+        if (disabledIds.length > 0) {
+            logger.debug(`Disabling ${disabledIds.length} builtin patterns`);
+        }
+        return BUILTIN_PATTERNS.filter((p) => !disabledIds.includes(p.id));
+    }
+    /**
+     * Add framework-specific patterns
+     */
+    addFrameworkPatterns(patterns, frameworkName, config) {
+        // Get framework from registry
+        const framework = FrameworkRegistry.get(frameworkName);
+        if (framework) {
+            const frameworkPatterns = framework.getFalsePositivePatterns();
+            patterns = [...patterns, ...frameworkPatterns];
+            logger.debug(`Added ${frameworkPatterns.length} patterns for ${frameworkName}`);
+        }
+        // Add framework-specific patterns from config
+        const frameworkConfig = config?.framework_specific?.[frameworkName];
+        if (frameworkConfig) {
+            // Filter out framework-specific disabled patterns
+            if (frameworkConfig.disabled_builtin_patterns) {
+                const disabledIds = frameworkConfig.disabled_builtin_patterns;
+                patterns = patterns.filter((p) => !disabledIds.includes(p.id));
+                logger.debug(`Disabled ${disabledIds.length} patterns for ${frameworkName}`);
+            }
+            // Add framework-specific custom patterns
+            if (frameworkConfig.custom_patterns) {
+                patterns = [...patterns, ...frameworkConfig.custom_patterns];
+                logger.debug(`Added ${frameworkConfig.custom_patterns.length} custom patterns for ${frameworkName}`);
+            }
+        }
+        return patterns;
+    }
+    /**
+     * Load project conventions from various sources
+     */
+    async loadConventions(repoPath, config) {
+        const conventions = [];
+        // Common convention file paths
+        const defaultPaths = [
+            "CLAUDE.md",
+            "CONVENTIONS.md",
+            "CONTRIBUTING.md",
+            "docs/conventions.md",
+            "principles/",
+        ];
+        // Paths from config
+        const configPaths = config?.conventions?.paths || [];
+        const allPaths = [...new Set([...defaultPaths, ...configPaths])];
+        for (const relativePath of allPaths) {
+            const fullPath = (0,external_path_.join)(repoPath, relativePath);
+            if (!(0,external_fs_.existsSync)(fullPath)) {
+                continue;
+            }
+            try {
+                // Check if it's a directory
+                const content = await this.loadConventionFile(fullPath);
+                if (content) {
+                    conventions.push(content);
+                    logger.debug(`Loaded conventions from ${relativePath}`);
+                }
+            }
+            catch (error) {
+                logger.debug(`Could not load conventions from ${relativePath}: ${error}`);
+            }
+        }
+        if (conventions.length === 0) {
+            logger.debug("No project conventions found");
+            return "";
+        }
+        return conventions.join("\n\n---\n\n");
+    }
+    /**
+     * Load a single convention file or directory
+     */
+    async loadConventionFile(path) {
+        try {
+            const content = await (0,promises_namespaceObject.readFile)(path, "utf-8");
+            return content;
+        }
+        catch {
+            // Might be a directory
+            return null;
+        }
+    }
+    /**
+     * Merge multiple project rules
+     */
+    static mergeRules(...rules) {
+        const mergedPatterns = [];
+        const seenIds = new Set();
+        const conventions = [];
+        const excludePatterns = [];
+        for (const rule of rules) {
+            // Merge patterns (deduplicate by ID)
+            for (const pattern of rule.patterns) {
+                if (!seenIds.has(pattern.id)) {
+                    seenIds.add(pattern.id);
+                    mergedPatterns.push(pattern);
+                }
+            }
+            // Merge conventions
+            if (rule.conventions) {
+                conventions.push(rule.conventions);
+            }
+            // Merge exclude patterns
+            excludePatterns.push(...rule.excludePatterns);
+        }
+        return {
+            patterns: mergedPatterns,
+            conventions: conventions.join("\n\n"),
+            excludePatterns: [...new Set(excludePatterns)],
+        };
+    }
+}
+//# sourceMappingURL=project-rules-loader.js.map
 ;// CONCATENATED MODULE: ./dist/core/review-engine.js
+
 
 
 
@@ -50166,9 +51016,24 @@ async function runReview(options) {
     const conventions = contextPaths.length > 0
         ? await configLoader.loadConventions(repoPath, contextPaths)
         : "";
+    // 11b. ProjectRulesLoader로 모든 FP 패턴 통합 (빌트인 + 프레임워크별 + 인라인)
+    const rulesLoader = new ProjectRulesLoader();
+    const projectRules = await rulesLoader.load(repoPath, analysis.context.framework.name);
+    // 11c. 외부 FP 파일 로드 및 머지
+    if (config.false_positive_files?.length) {
+        const extPatterns = await configLoader.loadFalsePositiveFiles(repoPath, config.false_positive_files);
+        projectRules.patterns.push(...extPatterns);
+    }
+    // 인라인 FP 패턴 추가 (config.false_positive_patterns)
+    if (config.false_positive_patterns?.length) {
+        projectRules.patterns.push(...config.false_positive_patterns);
+    }
+    // 중복 제거 (ID 기준, 후순위 우선)
+    const patternMap = new Map(projectRules.patterns.map(p => [p.id, p]));
+    const allPatterns = Array.from(patternMap.values());
     // 12. Consensus Engine — pass language
     const consensusEngine = new ConsensusEngine(claudeAdapter, conventions, config.language);
-    const result = await consensusEngine.generateReview(analysis, strategy, config.false_positive_patterns);
+    const result = await consensusEngine.generateReview(analysis, strategy, allPatterns);
     // 13. Log results
     logger.section("Review Results");
     logger.info(`Total Issues: ${result.summary.totalIssues}`);

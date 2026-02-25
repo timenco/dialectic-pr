@@ -16,6 +16,7 @@ import { ClaudeAdapter } from "../adapters/claude-api.js";
 import { GitHubAdapter } from "../adapters/github-api.js";
 import { FrameworkDetector } from "../frameworks/detector.js";
 import { ConfigLoader } from "../utils/config-loader.js";
+import { ProjectRulesLoader } from "../false-positive/project-rules-loader.js";
 
 /**
  * Format review result into a GitHub comment body
@@ -202,6 +203,27 @@ export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
       ? await configLoader.loadConventions(repoPath, contextPaths)
       : "";
 
+  // 11b. ProjectRulesLoader로 모든 FP 패턴 통합 (빌트인 + 프레임워크별 + 인라인)
+  const rulesLoader = new ProjectRulesLoader();
+  const projectRules = await rulesLoader.load(repoPath, analysis.context.framework.name);
+
+  // 11c. 외부 FP 파일 로드 및 머지
+  if (config.false_positive_files?.length) {
+    const extPatterns = await configLoader.loadFalsePositiveFiles(
+      repoPath, config.false_positive_files
+    );
+    projectRules.patterns.push(...extPatterns);
+  }
+
+  // 인라인 FP 패턴 추가 (config.false_positive_patterns)
+  if (config.false_positive_patterns?.length) {
+    projectRules.patterns.push(...config.false_positive_patterns);
+  }
+
+  // 중복 제거 (ID 기준, 후순위 우선)
+  const patternMap = new Map(projectRules.patterns.map(p => [p.id, p]));
+  const allPatterns = Array.from(patternMap.values());
+
   // 12. Consensus Engine — pass language
   const consensusEngine = new ConsensusEngine(
     claudeAdapter,
@@ -211,7 +233,7 @@ export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
   const result = await consensusEngine.generateReview(
     analysis,
     strategy,
-    config.false_positive_patterns
+    allPatterns
   );
 
   // 13. Log results

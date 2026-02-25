@@ -1,19 +1,19 @@
 # Dialectic PR
 
-> **AI code reviewer for TypeScript projects with multi-persona consensus**
+> **TypeScript/JavaScript 프로젝트를 위한 AI 코드 리뷰어**
 
-False Positive를 최소화하고 프레임워크 컨텍스트를 깊이 이해하는 지능형 PR 리뷰 시스템
+NestJS, Next.js, React, Express 프레임워크에 특화된 Claude 기반 PR 리뷰 GitHub Action
 
-## 🎯 핵심 차별화
+## 특징
 
-- **TypeScript/JavaScript 전용**: NestJS, Next.js, React, Express에 특화
-- **Consensus Review**: 두 AI 페르소나(Hawk & Owl)의 내부 대화로 노이즈 80% 감소
-- **Claude 최적화**: Prompt Caching으로 비용 90% 절감
-- **Framework-Aware**: 프레임워크별 Best Practice 자동 적용
-- **Smart Filtering**: 핵심 파일 우선순위 기반 지능형 리뷰
-- **False Positive Defense**: 30+ 내장 패턴으로 노이즈 최소화
+- **Hawk/Owl 합의 시스템**: Hawk(비판적 리뷰어)가 이슈를 찾고, Owl(실용적 검증자)이 ROI 기반으로 필터링
+- **38개 내장 FP 패턴**: SQL injection, 에러 핸들링, DI 등 알려진 오탐을 자동 억제
+- **3계층 규칙 시스템**: 빌트인 패턴 + 외부 FP 파일(`false_positive_files`) + 인라인 패턴
+- **Prompt Caching**: 시스템 메시지 캐싱으로 반복 리뷰 비용 최대 90% 절감
+- **Framework-Aware**: NestJS, Next.js, React, Express 자동 감지 및 프레임워크별 리뷰 규칙
+- **Smart Filtering**: 파일 우선순위 기반으로 토큰 예산 내에서 중요 파일 먼저 리뷰
 
-## 🚀 빠른 시작
+## 빠른 시작
 
 ### 1. 워크플로우 추가
 
@@ -50,9 +50,9 @@ ANTHROPIC_API_KEY: your-claude-api-key
 
 ### 3. PR 열기
 
-PR을 열면 자동으로 리뷰가 시작됩니다!
+PR을 열면 자동으로 리뷰가 시작됩니다.
 
-## ⚙️ 설정 옵션
+## 설정
 
 `.github/dialectic-pr.json`:
 
@@ -61,26 +61,30 @@ PR을 열면 자동으로 리뷰가 시작됩니다!
   "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
   "model": "claude-sonnet-4-20250514",
   "language": "ko",
-  "context_files": ["CLAUDE.md", "CONVENTIONS.md"],
-  "exclude_patterns": ["**/.env*", "**/secrets/**"],
-  "false_positive_patterns": [
-    {
-      "id": "custom-pattern",
-      "category": "custom",
-      "explanation": "프로젝트 특화 패턴 설명",
-      "falsePositiveIndicators": ["무시할 문구"]
-    }
-  ],
+  "context_files": ["CLAUDE.md"],
+  "false_positive_files": [".github/review-guardrails.json"],
+  "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**"],
   "framework_specific": {
     "nestjs": {
       "priority_modules": ["auth", "payments"]
     }
-  },
-  "conventions": {
-    "paths": ["CLAUDE.md", "CONVENTIONS.md"]
   }
 }
 ```
+
+### 설정 옵션
+
+| 옵션 | 타입 | 기본값 | 설명 |
+|------|------|--------|------|
+| `model` | string | `claude-sonnet-4-20250514` | 사용할 Claude 모델 |
+| `language` | string | — | 리뷰 출력 언어 (ISO 639-1, 예: `ko`, `en`, `ja`) |
+| `context_files` | string[] | `[]` | 리뷰 컨텍스트에 포함할 파일 (CLAUDE.md 등) |
+| `false_positive_files` | string[] | `[]` | 외부 FP 패턴 JSON 파일 경로 |
+| `exclude_patterns` | string[] | `[]` | 리뷰에서 제외할 글로브 패턴 |
+| `false_positive_patterns` | object[] | `[]` | 인라인 FP 패턴 정의 |
+| `framework_specific` | object | `{}` | 프레임워크별 추가 설정 |
+| `conventions` | object | — | 컨벤션 파일 경로 (`paths`) |
+| `strategies` | object | — | PR 크기별 토큰 예산 오버라이드 |
 
 ### Action Inputs
 
@@ -100,115 +104,364 @@ PR을 열면 자동으로 리뷰가 시작됩니다!
 | `critical_count` | 크리티컬 이슈 수 |
 | `review_posted` | 리뷰 포스트 여부 |
 
-## 🏗️ 아키텍처
+## FP 규칙 구성 가이드
+
+### 프롬프트 흐름과 각 설정의 위치
 
 ```
-GitHub Actions
-  → action.ts (Action Entry)
-    → review-engine.ts (runReview)
-      → Security Layer (privacy-guard, exclude-filter)
-        → PR Analyzer → Framework Detector → Smart Filter
-          → Strategy Selector
-            → Consensus Engine (Hawk + Owl personas)
-              → Claude API → Review Formatter → GitHub API
+System Message (캐시됨, Owl의 FP 판별 기준):
+  ├── Hawk/Owl 합의 지침                          ← 자동 (불변)
+  ├── FALSE_POSITIVE_PATTERNS:                     ← 아래 3개 소스가 머지됨
+  │     빌트인 38개                                  자동 (프레임워크별)
+  │     + false_positive_files (외부 JSON)           사용자 설정
+  │     + false_positive_patterns (인라인)            사용자 설정
+  ├── Framework Best Practices                     ← 자동 (감지된 프레임워크)
+  └── Language 지시                                ← language 설정
+
+User Message (매 PR마다 변경, Owl의 맥락 판단 근거):
+  ├── REVIEW_CONTEXT (framework, flags)            ← 자동
+  ├── STRATEGY + INSTRUCTIONS                      ← 자동 (PR 크기 기반)
+  ├── PROJECT_CONVENTIONS:                         ← context_files 내용
+  │     {context_files 파일 전문}
+  └── DIFF                                         ← PR diff
 ```
 
-## 🤖 Multi-Persona Consensus System
+Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
+1. **FALSE_POSITIVE_PATTERNS** — "이 표현이 리뷰에 있으면 FP" (정밀 매칭)
+2. **PROJECT_CONVENTIONS** — "이 프로젝트의 맥락상 정상인가" (자연어 판단)
 
-Dialectic PR은 단일 API 호출 내에서 두 AI 페르소나가 협력하여 리뷰합니다:
+이 차이가 핵심입니다. FP 패턴은 **좁고 정확하게** 작동하고, 컨텍스트 파일은 **넓고 해석적으로** 작동합니다.
+
+### 무엇을 어디에 넣을 것인가
+
+#### `false_positive_files` — 프로젝트 고유의 구조화된 FP 패턴
+
+**용도**: 빌트인 38개가 커버하지 못하는, 이 프로젝트만의 안전한 패턴.
+
+**넣어야 하는 것**:
+- 프로젝트가 사용하는 라이브러리/인프라의 안전한 패턴
+- 반복적으로 FP가 발생하는 프로젝트 고유 코드 패턴
+- 명확한 기술적 근거가 있는 예외
+
+**넣지 말아야 하는 것**:
+- "이 프로젝트에서는 코드 스타일 X가 정상" → `context_files`로
+- 빌트인 패턴과 중복되는 것 → 이미 자동 적용됨
+- "일단 무시해" 같은 임시 예외 → `false_positive_patterns` 인라인으로
+
+**파일 형식** (배열 또는 `{ "patterns": [...] }` 모두 지원):
+
+```json
+[
+  {
+    "id": "aurora-connection-pool-settings",
+    "category": "performance",
+    "severity": "medium",
+    "explanation": "Aurora Serverless v2 커넥션 풀은 인프라 레벨에서 관리되며, connection_limit 값은 Aurora 인스턴스 크기에 맞게 튜닝됨",
+    "falsePositiveIndicators": [
+      "connection pool size too small",
+      "connection pool size too large",
+      "커넥션 풀 설정"
+    ]
+  }
+]
+```
+
+**필드 설명**:
+
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| `id` | ✅ | 고유 ID. `{주제}-{세부}` 형식 권장. 빌트인과 동일 ID면 오버라이드 |
+| `category` | ✅ | `sql-injection` \| `error-handling` \| `dependency-injection` \| `logging` \| `authentication` \| `validation` \| `performance` \| `custom` |
+| `explanation` | ✅ | 왜 이것이 FP인지 기술적 근거. Owl이 이것을 읽고 판단함 |
+| `falsePositiveIndicators` | ✅ | Hawk의 리뷰에 이 문구가 포함되면 FP로 간주. **구체적일수록 정밀함** |
+| `severity` | — | `critical` \| `high` \| `medium` \| `low`. 프롬프트에 참고 정보로 포함 |
+
+**`falsePositiveIndicators` 작성 규칙**:
+
+```
+좋은 예 (구체적 → 정밀 매칭):
+  "Prisma $executeRaw에서 SQL injection"
+  "$queryRawSafe is unsafe"
+  "BigInt should be Int"
+
+나쁜 예 (모호 → 과도한 FP 억제):
+  "SQL 관련 이슈"
+  "데이터베이스 문제"
+  "타입 관련"
+```
+
+규칙: **Hawk가 실제로 쓸 법한 문장**을 넣으세요. 리뷰 출력에서 이 문자열이 부분 매칭됩니다.
+
+#### `false_positive_patterns` — 인라인 간편 패턴
+
+**용도**: 별도 파일을 만들 필요 없는 1~2개의 간단한 패턴.
+
+```json
+{
+  "false_positive_patterns": [
+    {
+      "id": "our-custom-decorator",
+      "category": "authentication",
+      "explanation": "@RequireAdmin은 내부 인증 데코레이터로 JwtGuard를 포함",
+      "falsePositiveIndicators": ["missing authentication on admin endpoint"]
+    }
+  ]
+}
+```
+
+**`false_positive_files` vs `false_positive_patterns` 선택 기준**:
+
+| 상황 | 선택 |
+|------|------|
+| 패턴이 3개 이상 | `false_positive_files` (별도 JSON 파일) |
+| 패턴이 1~2개 | `false_positive_patterns` (인라인) |
+| 여러 프로젝트에서 공유 | `false_positive_files` (공통 파일 참조) |
+| 빌트인 패턴을 오버라이드 | 어디든 가능 (동일 `id`로 정의하면 후순위 우선) |
+
+#### `context_files` — 서술형 프로젝트 맥락
+
+**용도**: 기술적 제약과 아키텍처 결정을 자연어로 기술. Owl이 맥락 판단에 사용.
+
+**주의**: 이 파일의 내용은 `PROJECT_CONVENTIONS:`로 User Message에 **그대로** 주입됩니다. "X는 괜찮다", "Y는 무시해도 된다"가 많을수록 Owl이 관대해집니다.
+
+**넣어야 하는 것** (기술적 제약):
+```markdown
+## Architecture
+- AllExceptionsFilter가 모든 에러를 HttpException으로 변환
+- BigInt 필드: orderId, paymentId (schema.prisma 기준)
+- Timezone: Asia/Seoul (dayjs utc + tz)
+
+## Critical Modules
+- auth, payments, memberships — 변경 시 높은 주의 필요
+```
+
+**넣지 말아야 하는 것** (리뷰 품질 저하):
+```markdown
+## 코드 스타일                    ← Owl과 무관, 토큰 낭비
+- camelCase 사용
+- import 순서: external → internal
+
+## 개발 워크플로우                 ← 리뷰와 무관
+- feature 브랜치에서 작업
+- PR 템플릿 사용
+
+## 허용 예외                       ← 위험: Owl 과도 관대화
+- 테스트에서 as any 허용           ← false_positive_files로 이동
+- console.log 허용                 ← 빌트인 패턴이 이미 커버
+```
+
+**핵심 원칙**: `context_files`에는 "무엇이 안전한가"가 아니라 "이 프로젝트가 어떻게 구성되어 있는가"를 넣으세요. "안전한 패턴"은 `false_positive_files`의 구조화된 패턴으로 표현해야 Owl이 정밀하게 동작합니다.
+
+### 설정 우선순위와 중복 제거
+
+```
+로드 순서 (후순위가 동일 ID를 오버라이드):
+  1. 빌트인 패턴 38개
+  2. 프레임워크별 패턴 (FrameworkRegistry)
+  3. false_positive_files 외부 파일
+  4. false_positive_patterns 인라인
+```
+
+예: 빌트인의 `prisma-tagged-template-safe`를 프로젝트에서 재정의하고 싶으면, `false_positive_files`나 인라인에 동일 `id`로 새 `explanation`과 `falsePositiveIndicators`를 정의하면 됩니다.
+
+### 실전 예시: NestJS + Prisma + Aurora 프로젝트
+
+```
+.github/
+  dialectic-pr.json          # 메인 설정
+  review-guardrails.json     # 프로젝트 FP 패턴 (6개)
+```
+
+**`.github/dialectic-pr.json`**:
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
+  "model": "claude-sonnet-4-20250514",
+  "language": "ko",
+  "context_files": ["CLAUDE-review.md"],
+  "false_positive_files": [".github/review-guardrails.json"],
+  "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**", "**/cdk.out/**"],
+  "framework_specific": {
+    "nestjs": {
+      "priority_modules": ["auth", "payments", "memberships", "orders"]
+    }
+  }
+}
+```
+
+**`.github/review-guardrails.json`** (빌트인이 커버하지 못하는 프로젝트 고유 패턴만):
+```json
+[
+  {
+    "id": "prisma-tagged-template-constants",
+    "category": "sql-injection",
+    "severity": "critical",
+    "explanation": "Prisma tagged template ($executeRaw`...${val}`)은 상수/변수 무관하게 모든 ${} 값을 자동 파라미터화하므로 안전",
+    "falsePositiveIndicators": [
+      "상수가 템플릿에 직접 삽입",
+      "constant directly inserted into query"
+    ]
+  },
+  {
+    "id": "error-rethrow-in-service",
+    "category": "error-handling",
+    "severity": "medium",
+    "explanation": "Service catch 블록에서 에러를 rethrow하는 패턴은 AllExceptionsFilter와 조합하여 스택 트레이스를 보존하면서 컨텍스트를 추가하는 의도적 설계",
+    "falsePositiveIndicators": [
+      "error rethrow without handling",
+      "catch block only rethrows",
+      "에러를 다시 throw"
+    ]
+  },
+  {
+    "id": "aurora-connection-pool-settings",
+    "category": "performance",
+    "severity": "medium",
+    "explanation": "Aurora Serverless v2 커넥션 풀은 인스턴스 크기에 맞게 튜닝되며, connection_limit은 인프라 팀이 관리",
+    "falsePositiveIndicators": [
+      "connection pool size",
+      "커넥션 풀 설정"
+    ]
+  }
+]
+```
+
+**`CLAUDE-review.md`** (리뷰 전용 컨텍스트, CLAUDE.md 원본과 별도):
+```markdown
+# Review Context
+
+## Architecture
+- NestJS 10 + Prisma 5 + AWS Aurora Serverless v2
+- AllExceptionsFilter → 모든 에러를 HttpException으로 변환
+- JwtGuard + RolesGuard → @Auth() 데코레이터 패턴
+
+## Database
+- BigInt 필드: orderId, paymentId, membershipId
+- Timezone: Asia/Seoul (dayjs utc + tz plugin)
+- null = DB에 값 없음, undefined = 필드 미설정
+
+## Critical Modules
+- auth, payments, memberships, orders
+```
+
+## Hawk/Owl 합의 시스템
+
+단일 Claude API 호출 내에서 두 역할을 프롬프트로 정의합니다:
 
 ### Hawk (Critical Reviewer)
-
 - 버그, 보안 취약점, 에지 케이스 탐지
 - 에러 핸들링, 타입 안전성 집중
 - 잠재적 이슈 목록 생성
 
 ### Owl (Pragmatic Validator)
-
-- Hawk의 우려사항 검증
-- False Positive 패턴 체크
+- Hawk의 이슈를 False Positive 패턴(빌트인 + 외부 + 인라인)과 대조
 - ROI 평가 및 실용적 필터링
+- 프로덕션 영향도 기반 검증
 
-**결과**: 두 페르소나가 **합의한 이슈만** 보고 → 노이즈 80% 감소
+**결과**: Owl의 필터링을 통과한 이슈만 보고
 
-## 💰 비용 최적화
+## 아키텍처
 
-### Prompt Caching (90% 비용 절감)
-
-```typescript
-const systemMessages = [
-  { text: AGENT_INSTRUCTIONS, cache_control: { type: "ephemeral" } },
-  { text: FP_PATTERNS, cache_control: { type: "ephemeral" } },
-  { text: FRAMEWORK_RULES, cache_control: { type: "ephemeral" } },
-];
+```
+GitHub Actions
+  → action.ts (Action Entry) / cli.ts (CLI Entry)
+    → review-engine.ts (runReview)
+      → Security Layer (privacy-guard, exclude-filter)
+        → PR Analyzer → Framework Detector → Smart Filter
+          → Strategy Selector
+            → ProjectRulesLoader (빌트인 + 프레임워크 FP 패턴)
+            → ConfigLoader.loadFalsePositiveFiles (외부 FP 파일)
+              → Consensus Engine (Hawk + Owl)
+                → Claude API (prompt caching) → GitHub API
 ```
 
-### 예상 비용
+### 리뷰 전략
 
-- 첫 PR 리뷰: ~$0.05
-- 이후 (캐시 히트): ~$0.005
+PR 크기에 따라 자동으로 전략을 선택합니다:
 
-## 🧪 개발
+| 전략 | 크기 | 토큰 예산 | 리뷰 초점 |
+|------|------|-----------|----------|
+| small | < 50KB | 16,000 | 포괄적 리뷰 |
+| medium | < 150KB | 12,000 | 핵심 이슈 + 버그 |
+| large | < 200KB | 8,000 | 보안 + 버그만 |
+| xlarge | < 800KB | 4,000 | 보안 이슈만 |
+| skip | >= 800KB | — | PR 분할 권고 |
+
+크리티컬 모듈(auth, payments 등) 변경 시 토큰 예산이 1.5배로 증가합니다.
+
+## 비용 구조
+
+Claude API 비용은 사용자 본인의 Anthropic API 키로 직접 지불합니다.
+
+시스템 메시지(에이전트 지침, FP 패턴, 프레임워크 룰)에 `cache_control`을 설정하여 캐시 할인을 받습니다:
+
+- 첫 PR 리뷰: 전체 토큰 비용 (캐시 생성)
+- 이후 리뷰 (캐시 히트 시): 시스템 메시지 부분 캐시 읽기 요금 적용
+
+## 개발
 
 ```bash
-# 단위 테스트
+# 단위 테스트 (106개)
 npm test
 
-# 타입 체크
+# 타입 체크 + 빌드
 npm run build
 
-# Action 번들 빌드
+# Action 번들 빌드 (tsc + ncc)
 npm run build:all
 
 # Lint
 npm run lint
 ```
 
-## 📁 프로젝트 구조
+## 프로젝트 구조
 
 ```
 dialectic-pr/
 ├── src/
-│   ├── core/           # 핵심 리뷰 로직
-│   ├── adapters/       # Claude & GitHub API
-│   ├── security/       # 보안 레이어
-│   ├── frameworks/     # 프레임워크 특화 룰
-│   ├── false-positive/ # FP 방어 시스템
-│   ├── utils/          # 유틸리티
-│   ├── action.ts       # GitHub Action 진입점
-│   ├── cli.ts          # CLI 진입점 (로컬 디버깅용)
-│   └── index.ts        # 모듈 exports
+│   ├── core/              # 리뷰 엔진, 분석기, 전략, 합의 엔진
+│   ├── adapters/          # Claude API, GitHub API, 재시도 핸들러
+│   ├── security/          # 프라이버시 가드, 파일 제외 필터
+│   ├── frameworks/        # 프레임워크 감지 및 특화 룰
+│   ├── false-positive/    # 빌트인 FP 패턴, 패턴 매처, 프로젝트 룰 로더
+│   ├── utils/             # 설정 로더, 로거, 메트릭 계산기
+│   ├── action.ts          # GitHub Action 진입점
+│   ├── cli.ts             # CLI 진입점 (로컬 디버깅용)
+│   └── index.ts           # 모듈 exports
 ├── tests/
-│   └── unit/           # 단위 테스트
-├── config/             # 기본 설정 & JSON Schema
-├── dist/action/        # 번들된 Action (커밋됨)
-├── action.yml          # GitHub Action 메타데이터
-└── specs/              # 상세 스펙 문서
+│   └── unit/              # 단위 테스트 (106개)
+├── config/                # JSON Schema, 기본 설정
+├── dist/action/           # 번들된 Action (커밋됨)
+├── action.yml             # GitHub Action 메타데이터
+└── specs/                 # 아키텍처 참조 문서
 ```
 
-## 🎯 지원 프레임워크
+## 지원 프레임워크
 
-| Framework | 감지 | 특화 룰 | FP 패턴 |
-| --------- | ---- | ------- | ------- |
-| NestJS    | ✅   | ✅      | ✅      |
-| Next.js   | ✅   | ✅      | ✅      |
-| React     | ✅   | ✅      | ✅      |
-| Express   | ✅   | ✅      | ✅      |
-| Vanilla   | ✅   | ✅      | ✅      |
+| Framework | 감지 | 프롬프트 룰 | FP 패턴 |
+| --------- | ---- | ----------- | ------- |
+| NestJS    | ✅   | ✅          | ✅      |
+| Next.js   | ✅   | ✅          | ✅      |
+| React     | ✅   | ✅          | ✅      |
+| Express   | ✅   | ✅          | ✅      |
+| Vanilla   | ✅   | ✅          | ✅      |
 
-## 🤝 기여하기
+## 내장 FP 패턴 카테고리
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+총 38개 패턴이 다음 카테고리에 분포:
 
-## 📄 라이센스
+| 카테고리 | 패턴 수 | 예시 |
+|----------|---------|------|
+| sql-injection | 5 | Prisma tagged template, $queryRawSafe |
+| error-handling | 5 | NestJS AllExceptionsFilter, async wrapper |
+| dependency-injection | 3 | NestJS constructor DI, @Inject |
+| logging | 3 | NestJS Logger 패턴, CLI console |
+| authentication | 3 | JWT env secret, bcrypt rounds |
+| validation | 9 | class-validator DTO, Zod, null/undefined 분리 |
+| performance | 1 | React.memo |
+| custom | 1 | Prisma BigInt 직렬화 |
+| React/Next.js/Express | 8 | Server Components, hooks, middleware |
+
+## 라이센스
 
 MIT
-
-## 📮 지원
-
-- [GitHub Issues](https://github.com/timenco/dialectic-pr/issues)
-- [Documentation](https://github.com/timenco/dialectic-pr#readme)

@@ -34,6 +34,20 @@ export const BUILTIN_PATTERNS: FalsePositivePattern[] = [
     ],
   },
   {
+    id: "prisma-queryrawsafe-params",
+    category: "sql-injection",
+    pattern: /\$queryRawSafe\(.*\$\d+/,
+    explanation:
+      "$queryRawSafe with $1, $2 placeholders passes all subsequent arguments as parameterized values, preventing SQL injection",
+    severity: "critical",
+    falsePositiveIndicators: [
+      "SQL injection in queryRawSafe",
+      "$queryRawSafe is unsafe",
+      "parameter not bound",
+      "queryRawSafe bypass",
+    ],
+  },
+  {
     id: "typeorm-query-builder",
     category: "sql-injection",
     explanation:
@@ -390,6 +404,39 @@ export const BUILTIN_PATTERNS: FalsePositivePattern[] = [
     falsePositiveIndicators: [
       "missing return before res",
       "should return res.json",
+    ],
+  },
+
+  // ============================================================================
+  // Database & ORM Advanced
+  // ============================================================================
+  {
+    id: "prisma-bigint-serialization-check",
+    category: "custom",
+    explanation:
+      "BigInt serialization warnings require checking the Prisma schema first — fields defined as BigInt in schema.prisma are intentionally BigInt, not Int",
+    falsePositiveIndicators: [
+      "BigInt should be Int",
+      "BigInt serialization error",
+      "use Number instead of BigInt",
+      "BigInt is not serializable",
+    ],
+  },
+
+  // ============================================================================
+  // Intentional Code Patterns
+  // ============================================================================
+  {
+    id: "null-undefined-intentional-separation",
+    category: "validation",
+    explanation:
+      "null (explicit DB absence) and undefined (optional/unset) are intentionally separated — this is a common TypeScript pattern for distinguishing DB null from unset fields",
+    falsePositiveIndicators: [
+      "use null instead of undefined",
+      "use undefined instead of null",
+      "inconsistent null/undefined usage",
+      "null과 undefined를 혼용",
+      "null/undefined 일관성",
     ],
   },
 ];

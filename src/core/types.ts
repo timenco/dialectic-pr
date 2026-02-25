@@ -306,6 +306,7 @@ export interface DialecticConfig {
   model: string;
   language?: string;
   context_files?: string[];
+  false_positive_files?: string[];
   exclude_patterns: string[];
   strategies: StrategyConfig;
   false_positive_patterns: FalsePositivePattern[];

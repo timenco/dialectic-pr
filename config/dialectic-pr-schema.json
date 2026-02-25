@@ -25,11 +25,18 @@
     },
     "context_files": {
       "type": "array",
-      "description": "Additional context files to include in the review (relative to repo root)",
+      "description": "Project context files injected into User Message as PROJECT_CONVENTIONS. Use for architectural context (e.g. 'AllExceptionsFilter handles all errors'), NOT for 'X is safe' rules — those belong in false_positive_files.",
       "items": {
         "type": "string"
       },
-      "examples": [["CLAUDE.md", "principles/refactoring-pipeline.md"]]
+      "examples": [["CLAUDE-review.md"]]
+    },
+    "false_positive_files": {
+      "type": "array",
+      "description": "Paths to JSON files with structured FP patterns (injected into cached System Message). Use for project-specific safe patterns that builtin 38 patterns don't cover. Format: array of {id, category, explanation, falsePositiveIndicators} or {patterns: [...]}.",
+      "items": { "type": "string" },
+      "default": [],
+      "examples": [[".github/review-guardrails.json"]]
     },
     "exclude_patterns": {
       "type": "array",
@@ -75,7 +82,7 @@
     },
     "false_positive_patterns": {
       "type": "array",
-      "description": "Custom false positive patterns to suppress known-safe review findings",
+      "description": "Inline FP patterns for quick 1-2 pattern overrides. For 3+ patterns, use false_positive_files instead. Same format as patterns in external files.",
       "items": {
         "type": "object",
         "properties": {

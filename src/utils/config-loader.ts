@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { ConfigError, DialecticConfig } from "../core/types.js";
+import { ConfigError, DialecticConfig, FalsePositivePattern } from "../core/types.js";
 import { logger } from "./logger.js";
 
 /**
@@ -13,6 +13,7 @@ export class ConfigLoader {
     model: "claude-sonnet-4-20250514",
     language: undefined,
     context_files: [],
+    false_positive_files: [],
     exclude_patterns: [],
     strategies: {
       small: { maxTokens: 16000 },
@@ -49,6 +50,7 @@ export class ConfigLoader {
         ...this.defaultConfig,
         ...userConfig,
         context_files: userConfig.context_files || [],
+        false_positive_files: userConfig.false_positive_files || [],
         strategies: {
           ...this.defaultConfig.strategies,
           ...userConfig.strategies,
@@ -148,6 +150,74 @@ export class ConfigLoader {
     }
 
     return conventions.join("\n\n---\n\n");
+  }
+
+  /**
+   * 외부 FP 패턴 파일 로드
+   * @param repoPath 저장소 루트 경로
+   * @param filePaths FP 패턴 파일 경로 배열 (저장소 루트 기준 상대 경로)
+   */
+  async loadFalsePositiveFiles(
+    repoPath: string,
+    filePaths: string[]
+  ): Promise<FalsePositivePattern[]> {
+    const patterns: FalsePositivePattern[] = [];
+
+    for (const filePath of filePaths) {
+      const fullPath = join(repoPath, filePath);
+
+      if (!existsSync(fullPath)) {
+        logger.warn(`False positive file not found: ${filePath}`);
+        continue;
+      }
+
+      try {
+        const content = await readFile(fullPath, "utf-8");
+        const parsed = JSON.parse(content);
+
+        // 배열 형식 [...] 또는 객체 형식 { patterns: [...] } 모두 지원
+        const rawPatterns: unknown[] = Array.isArray(parsed)
+          ? parsed
+          : parsed.patterns;
+
+        if (!Array.isArray(rawPatterns)) {
+          logger.warn(
+            `Invalid format in ${filePath}: expected array or { patterns: [...] }`
+          );
+          continue;
+        }
+
+        for (const raw of rawPatterns) {
+          if (this.isValidFPPattern(raw)) {
+            patterns.push(raw as FalsePositivePattern);
+          } else {
+            logger.warn(
+              `Skipping invalid pattern in ${filePath}: missing required fields (id, category, explanation, falsePositiveIndicators)`
+            );
+          }
+        }
+
+        logger.info(`Loaded ${rawPatterns.length} FP patterns from ${filePath}`);
+      } catch (error) {
+        logger.warn(`Failed to load FP file ${filePath}: ${error}`);
+      }
+    }
+
+    return patterns;
+  }
+
+  /**
+   * FP 패턴 유효성 검증
+   */
+  private isValidFPPattern(raw: unknown): boolean {
+    if (typeof raw !== "object" || raw === null) return false;
+    const obj = raw as Record<string, unknown>;
+    return (
+      typeof obj.id === "string" &&
+      typeof obj.category === "string" &&
+      typeof obj.explanation === "string" &&
+      Array.isArray(obj.falsePositiveIndicators)
+    );
   }
 
   /**

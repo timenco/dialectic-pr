@@ -92,6 +92,27 @@ describe("Builtin Patterns", () => {
     });
   });
 
+  describe("New patterns from longblack-api", () => {
+    it("should include prisma-queryrawsafe-params", () => {
+      const pattern = getPatternById("prisma-queryrawsafe-params");
+      expect(pattern).toBeDefined();
+      expect(pattern?.category).toBe("sql-injection");
+      expect(pattern?.severity).toBe("critical");
+    });
+
+    it("should include prisma-bigint-serialization-check", () => {
+      const pattern = getPatternById("prisma-bigint-serialization-check");
+      expect(pattern).toBeDefined();
+      expect(pattern?.category).toBe("custom");
+    });
+
+    it("should include null-undefined-intentional-separation", () => {
+      const pattern = getPatternById("null-undefined-intentional-separation");
+      expect(pattern).toBeDefined();
+      expect(pattern?.category).toBe("validation");
+    });
+  });
+
   describe("Pattern categories coverage", () => {
     const expectedCategories = [
       "sql-injection",
@@ -101,6 +122,7 @@ describe("Builtin Patterns", () => {
       "authentication",
       "validation",
       "performance",
+      "custom",
     ];
 
     it.each(expectedCategories)("should have patterns for %s category", (category) => {
