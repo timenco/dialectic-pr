@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { ConfigError, DialecticConfig, FalsePositivePattern } from "../core/types.js";
+import { ConfigError, DialecticConfig, FalsePositivePattern, GuardrailsFile } from "../core/types.js";
 import { logger } from "./logger.js";
 
 /**
@@ -12,17 +12,22 @@ export class ConfigLoader {
   private readonly defaultConfig: DialecticConfig = {
     model: "claude-sonnet-4-20250514",
     language: undefined,
-    context_files: [],
-    false_positive_files: [],
     exclude_patterns: [],
     strategies: {
       small: { maxTokens: 16000 },
       medium: { maxTokens: 12000 },
       large: { maxTokens: 8000 },
     },
-    false_positive_patterns: [],
-    framework_specific: {},
   };
+
+  /** Deprecated field names that should trigger a warning */
+  private static readonly DEPRECATED_FIELDS = [
+    "context_files",
+    "false_positive_files",
+    "false_positive_patterns",
+    "framework_specific",
+    "conventions",
+  ];
 
   /**
    * 설정 파일 로드
@@ -43,21 +48,18 @@ export class ConfigLoader {
 
     try {
       const content = await readFile(configFilePath, "utf-8");
-      const userConfig = JSON.parse(content) as Partial<DialecticConfig>;
+      const userConfig = JSON.parse(content) as Record<string, unknown>;
+
+      // Deprecation warnings
+      this.warnDeprecatedFields(userConfig);
 
       // 기본 설정과 병합
       const mergedConfig: DialecticConfig = {
         ...this.defaultConfig,
-        ...userConfig,
-        context_files: userConfig.context_files || [],
-        false_positive_files: userConfig.false_positive_files || [],
+        ...this.pickValidFields(userConfig),
         strategies: {
           ...this.defaultConfig.strategies,
-          ...userConfig.strategies,
-        },
-        framework_specific: {
-          ...this.defaultConfig.framework_specific,
-          ...userConfig.framework_specific,
+          ...(userConfig.strategies as DialecticConfig["strategies"] | undefined),
         },
       };
 
@@ -74,6 +76,70 @@ export class ConfigLoader {
         `Failed to load config from ${configFilePath}: ${error}`,
         { path: configFilePath, error }
       );
+    }
+  }
+
+  /**
+   * .github/review-guardrails.json 자동 감지 및 로드
+   */
+  async loadGuardrails(repoPath: string): Promise<GuardrailsFile> {
+    const guardrailsPath = join(repoPath, ".github/review-guardrails.json");
+
+    if (!existsSync(guardrailsPath)) {
+      return {};
+    }
+
+    try {
+      const content = await readFile(guardrailsPath, "utf-8");
+      const parsed = JSON.parse(content);
+
+      // 배열 형식 [...] → { patterns: [...] }
+      if (Array.isArray(parsed)) {
+        const validPatterns = parsed.filter((p) => this.isValidFPPattern(p));
+        logger.info(`Loaded ${validPatterns.length} guardrail patterns from ${guardrailsPath}`);
+        return { patterns: validPatterns as FalsePositivePattern[] };
+      }
+
+      // 객체 형식 { patterns?: [...], disabled_patterns?: [...] }
+      const result: GuardrailsFile = {};
+
+      if (Array.isArray(parsed.patterns)) {
+        result.patterns = parsed.patterns.filter((p: unknown) =>
+          this.isValidFPPattern(p)
+        ) as FalsePositivePattern[];
+      }
+
+      if (Array.isArray(parsed.disabled_patterns)) {
+        result.disabled_patterns = parsed.disabled_patterns;
+      }
+
+      logger.info(
+        `Loaded guardrails from ${guardrailsPath}: ${result.patterns?.length ?? 0} patterns, ${result.disabled_patterns?.length ?? 0} disabled`
+      );
+      return result;
+    } catch (error) {
+      logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${error}`);
+      return {};
+    }
+  }
+
+  /**
+   * CLAUDE.md 자동 감지 및 로드
+   */
+  async loadClaudeMd(repoPath: string): Promise<string> {
+    const claudeMdPath = join(repoPath, "CLAUDE.md");
+
+    if (!existsSync(claudeMdPath)) {
+      return "";
+    }
+
+    try {
+      const content = await readFile(claudeMdPath, "utf-8");
+      logger.info(`Loaded project context from CLAUDE.md`);
+      return content;
+    } catch (error) {
+      logger.warn(`Failed to load CLAUDE.md: ${error}`);
+      return "";
     }
   }
 
@@ -106,104 +172,35 @@ export class ConfigLoader {
     if (!Array.isArray(config.exclude_patterns)) {
       throw new ConfigError("exclude_patterns must be an array");
     }
+  }
 
-    // False positive patterns 검증
-    if (!Array.isArray(config.false_positive_patterns)) {
-      throw new ConfigError("false_positive_patterns must be an array");
+  /**
+   * Pick only valid DialecticConfig fields from user config
+   */
+  private pickValidFields(
+    userConfig: Record<string, unknown>
+  ): Partial<DialecticConfig> {
+    const result: Partial<DialecticConfig> = {};
+    if (typeof userConfig.model === "string") result.model = userConfig.model;
+    if (typeof userConfig.language === "string") result.language = userConfig.language;
+    if (Array.isArray(userConfig.exclude_patterns)) {
+      result.exclude_patterns = userConfig.exclude_patterns as string[];
     }
+    return result;
+  }
 
-    for (const pattern of config.false_positive_patterns) {
-      if (!pattern.id || !pattern.category || !pattern.explanation) {
-        throw new ConfigError(
-          "Each false positive pattern must have id, category, and explanation"
+  /**
+   * Warn about deprecated config fields
+   */
+  private warnDeprecatedFields(userConfig: Record<string, unknown>): void {
+    for (const field of ConfigLoader.DEPRECATED_FIELDS) {
+      if (field in userConfig) {
+        logger.warn(
+          `⚠️  Config field "${field}" is deprecated and will be ignored. ` +
+          `Use .github/review-guardrails.json for FP patterns or CLAUDE.md for project context.`
         );
       }
     }
-  }
-
-  /**
-   * 프로젝트 컨벤션 파일 로드
-   * @param repoPath 저장소 루트 경로
-   * @param conventionPaths 컨벤션 파일 경로 배열
-   */
-  async loadConventions(
-    repoPath: string,
-    conventionPaths: string[]
-  ): Promise<string> {
-    const conventions: string[] = [];
-
-    for (const conventionPath of conventionPaths) {
-      const fullPath = join(repoPath, conventionPath);
-
-      if (!existsSync(fullPath)) {
-        logger.warn(`Convention file not found: ${conventionPath}`);
-        continue;
-      }
-
-      try {
-        const content = await readFile(fullPath, "utf-8");
-        conventions.push(`\n## From ${conventionPath}\n\n${content}`);
-        logger.debug(`Loaded convention from ${conventionPath}`);
-      } catch (error) {
-        logger.warn(`Failed to load convention from ${conventionPath}: ${error}`);
-      }
-    }
-
-    return conventions.join("\n\n---\n\n");
-  }
-
-  /**
-   * 외부 FP 패턴 파일 로드
-   * @param repoPath 저장소 루트 경로
-   * @param filePaths FP 패턴 파일 경로 배열 (저장소 루트 기준 상대 경로)
-   */
-  async loadFalsePositiveFiles(
-    repoPath: string,
-    filePaths: string[]
-  ): Promise<FalsePositivePattern[]> {
-    const patterns: FalsePositivePattern[] = [];
-
-    for (const filePath of filePaths) {
-      const fullPath = join(repoPath, filePath);
-
-      if (!existsSync(fullPath)) {
-        logger.warn(`False positive file not found: ${filePath}`);
-        continue;
-      }
-
-      try {
-        const content = await readFile(fullPath, "utf-8");
-        const parsed = JSON.parse(content);
-
-        // 배열 형식 [...] 또는 객체 형식 { patterns: [...] } 모두 지원
-        const rawPatterns: unknown[] = Array.isArray(parsed)
-          ? parsed
-          : parsed.patterns;
-
-        if (!Array.isArray(rawPatterns)) {
-          logger.warn(
-            `Invalid format in ${filePath}: expected array or { patterns: [...] }`
-          );
-          continue;
-        }
-
-        for (const raw of rawPatterns) {
-          if (this.isValidFPPattern(raw)) {
-            patterns.push(raw as FalsePositivePattern);
-          } else {
-            logger.warn(
-              `Skipping invalid pattern in ${filePath}: missing required fields (id, category, explanation, falsePositiveIndicators)`
-            );
-          }
-        }
-
-        logger.info(`Loaded ${rawPatterns.length} FP patterns from ${filePath}`);
-      } catch (error) {
-        logger.warn(`Failed to load FP file ${filePath}: ${error}`);
-      }
-    }
-
-    return patterns;
   }
 
   /**
@@ -227,4 +224,3 @@ export class ConfigLoader {
     return { ...this.defaultConfig };
   }
 }
-

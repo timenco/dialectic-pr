@@ -27,12 +27,10 @@ describe("ConfigLoader", () => {
     it("should return default config when no config file exists", async () => {
       const config = await configLoader.load(testDir);
       expect(config.model).toBe("claude-sonnet-4-20250514");
-      expect(config.false_positive_files).toEqual([]);
-      expect(config.context_files).toEqual([]);
-      expect(config.false_positive_patterns).toEqual([]);
+      expect(config.exclude_patterns).toEqual([]);
     });
 
-    it("should merge false_positive_files from user config", async () => {
+    it("should load and merge user config", async () => {
       const githubDir = join(testDir, ".github");
       if (!existsSync(githubDir)) {
         await mkdir(githubDir, { recursive: true });
@@ -42,27 +40,49 @@ describe("ConfigLoader", () => {
         configPath,
         JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          false_positive_files: [".github/review-guardrails.json"],
+          exclude_patterns: ["**/*.lock"],
         })
       );
 
       const config = await configLoader.load(testDir);
-      expect(config.false_positive_files).toEqual([
-        ".github/review-guardrails.json",
-      ]);
+      expect(config.exclude_patterns).toEqual(["**/*.lock"]);
+    });
+
+    it("should warn about deprecated fields", async () => {
+      const githubDir = join(testDir, ".github");
+      if (!existsSync(githubDir)) {
+        await mkdir(githubDir, { recursive: true });
+      }
+      const configPath = join(githubDir, "dialectic-pr.json");
+      await writeFile(
+        configPath,
+        JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          false_positive_patterns: [],
+          framework_specific: {},
+        })
+      );
+
+      // Should not throw, just warn
+      const config = await configLoader.load(testDir);
+      expect(config.model).toBe("claude-sonnet-4-20250514");
     });
   });
 
-  describe("loadFalsePositiveFiles()", () => {
-    it("should load patterns from array-format JSON file", async () => {
-      const fpDir = join(testDir, ".github");
-      if (!existsSync(fpDir)) {
-        await mkdir(fpDir, { recursive: true });
+  describe("loadGuardrails()", () => {
+    it("should return empty object when file does not exist", async () => {
+      const guardrails = await configLoader.loadGuardrails("/nonexistent/path");
+      expect(guardrails).toEqual({});
+    });
+
+    it("should load array-format guardrails file", async () => {
+      const githubDir = join(testDir, ".github");
+      if (!existsSync(githubDir)) {
+        await mkdir(githubDir, { recursive: true });
       }
 
-      const fpFile = join(fpDir, "fp-patterns.json");
       await writeFile(
-        fpFile,
+        join(githubDir, "review-guardrails.json"),
         JSON.stringify([
           {
             id: "test-pattern-1",
@@ -73,23 +93,19 @@ describe("ConfigLoader", () => {
         ])
       );
 
-      const patterns = await configLoader.loadFalsePositiveFiles(testDir, [
-        ".github/fp-patterns.json",
-      ]);
-
-      expect(patterns).toHaveLength(1);
-      expect(patterns[0].id).toBe("test-pattern-1");
+      const guardrails = await configLoader.loadGuardrails(testDir);
+      expect(guardrails.patterns).toHaveLength(1);
+      expect(guardrails.patterns![0].id).toBe("test-pattern-1");
     });
 
-    it("should load patterns from object-format JSON file", async () => {
-      const fpDir = join(testDir, ".github");
-      if (!existsSync(fpDir)) {
-        await mkdir(fpDir, { recursive: true });
+    it("should load object-format guardrails file", async () => {
+      const githubDir = join(testDir, ".github");
+      if (!existsSync(githubDir)) {
+        await mkdir(githubDir, { recursive: true });
       }
 
-      const fpFile = join(fpDir, "fp-patterns-obj.json");
       await writeFile(
-        fpFile,
+        join(githubDir, "review-guardrails.json"),
         JSON.stringify({
           patterns: [
             {
@@ -99,76 +115,52 @@ describe("ConfigLoader", () => {
               falsePositiveIndicators: ["sql test"],
             },
           ],
+          disabled_patterns: ["builtin-1"],
         })
       );
 
-      const patterns = await configLoader.loadFalsePositiveFiles(testDir, [
-        ".github/fp-patterns-obj.json",
-      ]);
-
-      expect(patterns).toHaveLength(1);
-      expect(patterns[0].id).toBe("test-pattern-2");
-      expect(patterns[0].category).toBe("sql-injection");
+      const guardrails = await configLoader.loadGuardrails(testDir);
+      expect(guardrails.patterns).toHaveLength(1);
+      expect(guardrails.patterns![0].id).toBe("test-pattern-2");
+      expect(guardrails.disabled_patterns).toEqual(["builtin-1"]);
     });
 
-    it("should skip invalid patterns missing required fields", async () => {
-      const fpDir = join(testDir, ".github");
-      if (!existsSync(fpDir)) {
-        await mkdir(fpDir, { recursive: true });
-      }
-
-      const fpFile = join(fpDir, "fp-invalid.json");
-      await writeFile(
-        fpFile,
-        JSON.stringify([
-          { id: "valid-pattern", category: "custom", explanation: "Valid", falsePositiveIndicators: ["test"] },
-          { id: "invalid-no-indicators", category: "custom", explanation: "Missing indicators" },
-          { category: "custom", explanation: "Missing id", falsePositiveIndicators: ["test"] },
-        ])
-      );
-
-      const patterns = await configLoader.loadFalsePositiveFiles(testDir, [
-        ".github/fp-invalid.json",
-      ]);
-
-      expect(patterns).toHaveLength(1);
-      expect(patterns[0].id).toBe("valid-pattern");
-    });
-
-    it("should return empty array for non-existent file", async () => {
-      const patterns = await configLoader.loadFalsePositiveFiles(testDir, [
-        ".github/non-existent.json",
-      ]);
-
-      expect(patterns).toEqual([]);
-    });
-
-    it("should handle multiple files", async () => {
-      const fpDir = join(testDir, ".github");
-      if (!existsSync(fpDir)) {
-        await mkdir(fpDir, { recursive: true });
+    it("should skip invalid patterns", async () => {
+      const githubDir = join(testDir, ".github");
+      if (!existsSync(githubDir)) {
+        await mkdir(githubDir, { recursive: true });
       }
 
       await writeFile(
-        join(fpDir, "fp-a.json"),
+        join(githubDir, "review-guardrails.json"),
         JSON.stringify([
-          { id: "pattern-a", category: "custom", explanation: "A", falsePositiveIndicators: ["a"] },
-        ])
-      );
-      await writeFile(
-        join(fpDir, "fp-b.json"),
-        JSON.stringify([
-          { id: "pattern-b", category: "custom", explanation: "B", falsePositiveIndicators: ["b"] },
+          {
+            id: "valid",
+            category: "custom",
+            explanation: "Valid",
+            falsePositiveIndicators: ["test"],
+          },
+          { id: "invalid-no-indicators", category: "custom", explanation: "Missing" },
         ])
       );
 
-      const patterns = await configLoader.loadFalsePositiveFiles(testDir, [
-        ".github/fp-a.json",
-        ".github/fp-b.json",
-      ]);
+      const guardrails = await configLoader.loadGuardrails(testDir);
+      expect(guardrails.patterns).toHaveLength(1);
+      expect(guardrails.patterns![0].id).toBe("valid");
+    });
+  });
 
-      expect(patterns).toHaveLength(2);
-      expect(patterns.map((p) => p.id)).toEqual(["pattern-a", "pattern-b"]);
+  describe("loadClaudeMd()", () => {
+    it("should return empty string when CLAUDE.md does not exist", async () => {
+      const content = await configLoader.loadClaudeMd("/nonexistent/path");
+      expect(content).toBe("");
+    });
+
+    it("should load CLAUDE.md content", async () => {
+      await writeFile(join(testDir, "CLAUDE.md"), "# Project Context\nTest content");
+
+      const content = await configLoader.loadClaudeMd(testDir);
+      expect(content).toBe("# Project Context\nTest content");
     });
   });
 });

@@ -31,11 +31,13 @@ program
       console.log(`
 생성된 파일:
   - .github/dialectic-pr.json (설정 파일)
+  - .github/review-guardrails.json (FP 패턴 설정)
   - .github/workflows/dialectic-pr-review.yml (워크플로우)
 
 다음 단계:
   1. GitHub Secrets에 ANTHROPIC_API_KEY 추가
   2. PR을 열어 첫 리뷰 받기
+  3. (선택) CLAUDE.md에 프로젝트 컨텍스트 작성
 
 문서: https://github.com/timenco/dialectic-pr#readme
       `);
@@ -107,14 +109,24 @@ async function initCommand(): Promise<void> {
   const configTemplate = `{
   "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
   "model": "claude-sonnet-4-20250514",
-  "exclude_patterns": [],
-  "false_positive_patterns": [],
-  "framework_specific": {}
+  "exclude_patterns": []
 }
 `;
 
   await writeFile(configPath, configTemplate, "utf-8");
   logger.success(`Created ${configPath}`);
+
+  // 1b. review-guardrails.json 스텁 생성
+  const guardrailsPath = join(githubDir, "review-guardrails.json");
+  if (!existsSync(guardrailsPath)) {
+    const guardrailsTemplate = `{
+  "patterns": [],
+  "disabled_patterns": []
+}
+`;
+    await writeFile(guardrailsPath, guardrailsTemplate, "utf-8");
+    logger.success(`Created ${guardrailsPath}`);
+  }
 
   // 2. workflow.yml 생성
   const workflowPath = join(workflowsDir, "dialectic-pr-review.yml");

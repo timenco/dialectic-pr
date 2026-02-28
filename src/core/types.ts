@@ -117,11 +117,9 @@ export interface FalsePositivePattern {
   falsePositiveIndicators: string[]; // AI가 이런 표현을 쓰면 FP로 간주
 }
 
-export interface ProjectRules {
-  patterns: FalsePositivePattern[];
-  conventions: string;
-  overrides?: Record<string, unknown>;
-  excludePatterns: string[];
+export interface GuardrailsFile {
+  patterns?: FalsePositivePattern[];
+  disabled_patterns?: string[];
 }
 
 // ============================================================================
@@ -305,13 +303,8 @@ export interface CLIOptions {
 export interface DialecticConfig {
   model: string;
   language?: string;
-  context_files?: string[];
-  false_positive_files?: string[];
   exclude_patterns: string[];
   strategies: StrategyConfig;
-  false_positive_patterns: FalsePositivePattern[];
-  framework_specific: FrameworkSpecificConfig;
-  conventions?: ConventionsConfig;
 }
 
 export interface StrategyConfig {
@@ -321,23 +314,6 @@ export interface StrategyConfig {
   xlarge?: { maxTokens: number };
 }
 
-export interface FrameworkSpecificConfig {
-  nestjs?: {
-    disabled_builtin_patterns?: string[];
-    custom_patterns?: FalsePositivePattern[];
-    priority_modules?: string[];
-  };
-  nextjs?: {
-    app_router?: boolean;
-    check_client_components?: boolean;
-  };
-  [key: string]: unknown;
-}
-
-export interface ConventionsConfig {
-  paths: string[];
-  sections?: Record<string, string[]>;
-}
 
 // ============================================================================
 // Error Types

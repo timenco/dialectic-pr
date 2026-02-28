@@ -190,39 +190,23 @@ export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
     };
   }
 
-  // 11. Load conventions (conventions.paths + context_files merged)
-  let contextPaths: string[] = [];
-  if (config.conventions?.paths) {
-    contextPaths.push(...config.conventions.paths);
-  }
-  if (config.context_files) {
-    contextPaths.push(...config.context_files);
-  }
-  const conventions =
-    contextPaths.length > 0
-      ? await configLoader.loadConventions(repoPath, contextPaths)
-      : "";
+  // 11. CLAUDE.md 자동 감지
+  const conventions = await configLoader.loadClaudeMd(repoPath);
 
-  // 11b. ProjectRulesLoader로 모든 FP 패턴 통합 (빌트인 + 프레임워크별 + 인라인)
+  // 11b. guardrails.json 자동 감지
+  const guardrails = await configLoader.loadGuardrails(repoPath);
+
+  // 11c. FP 패턴 조합 (builtin + framework - disabled + project)
   const rulesLoader = new ProjectRulesLoader();
-  const projectRules = await rulesLoader.load(repoPath, analysis.context.framework.name);
-
-  // 11c. 외부 FP 파일 로드 및 머지
-  if (config.false_positive_files?.length) {
-    const extPatterns = await configLoader.loadFalsePositiveFiles(
-      repoPath, config.false_positive_files
-    );
-    projectRules.patterns.push(...extPatterns);
+  const basePatterns = rulesLoader.load(
+    analysis.context.framework.name,
+    guardrails.disabled_patterns || []
+  );
+  const allPatternsMap = new Map(basePatterns.map(p => [p.id, p]));
+  for (const p of guardrails.patterns || []) {
+    allPatternsMap.set(p.id, p); // 프로젝트 패턴이 빌트인 override
   }
-
-  // 인라인 FP 패턴 추가 (config.false_positive_patterns)
-  if (config.false_positive_patterns?.length) {
-    projectRules.patterns.push(...config.false_positive_patterns);
-  }
-
-  // 중복 제거 (ID 기준, 후순위 우선)
-  const patternMap = new Map(projectRules.patterns.map(p => [p.id, p]));
-  const allPatterns = Array.from(patternMap.values());
+  const allPatterns = Array.from(allPatternsMap.values());
 
   // 12. Consensus Engine — pass language
   const consensusEngine = new ConsensusEngine(

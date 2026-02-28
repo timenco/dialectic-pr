@@ -23,21 +23,6 @@
       "description": "Review output language (ISO 639-1 code)",
       "examples": ["en", "ko", "ja", "zh"]
     },
-    "context_files": {
-      "type": "array",
-      "description": "Project context files injected into User Message as PROJECT_CONVENTIONS. Use for architectural context (e.g. 'AllExceptionsFilter handles all errors'), NOT for 'X is safe' rules — those belong in false_positive_files.",
-      "items": {
-        "type": "string"
-      },
-      "examples": [["CLAUDE-review.md"]]
-    },
-    "false_positive_files": {
-      "type": "array",
-      "description": "Paths to JSON files with structured FP patterns (injected into cached System Message). Use for project-specific safe patterns that builtin 38 patterns don't cover. Format: array of {id, category, explanation, falsePositiveIndicators} or {patterns: [...]}.",
-      "items": { "type": "string" },
-      "default": [],
-      "examples": [[".github/review-guardrails.json"]]
-    },
     "exclude_patterns": {
       "type": "array",
       "description": "Glob patterns for files to exclude from review",
@@ -77,86 +62,6 @@
             "maxTokens": { "type": "number" }
           },
           "required": ["maxTokens"]
-        }
-      }
-    },
-    "false_positive_patterns": {
-      "type": "array",
-      "description": "Inline FP patterns for quick 1-2 pattern overrides. For 3+ patterns, use false_positive_files instead. Same format as patterns in external files.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Unique identifier for the pattern"
-          },
-          "category": {
-            "type": "string",
-            "enum": ["sql-injection", "error-handling", "dependency-injection", "logging", "authentication", "validation", "performance", "custom"],
-            "description": "Pattern category"
-          },
-          "explanation": {
-            "type": "string",
-            "description": "Why this is a false positive"
-          },
-          "falsePositiveIndicators": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "Text patterns in AI review output that indicate this false positive"
-          },
-          "severity": {
-            "type": "string",
-            "enum": ["critical", "high", "medium", "low"]
-          }
-        },
-        "required": ["id", "category", "explanation", "falsePositiveIndicators"]
-      },
-      "default": []
-    },
-    "framework_specific": {
-      "type": "object",
-      "description": "Framework-specific configuration",
-      "properties": {
-        "nestjs": {
-          "type": "object",
-          "properties": {
-            "disabled_builtin_patterns": {
-              "type": "array",
-              "items": { "type": "string" }
-            },
-            "custom_patterns": { "type": "array" },
-            "priority_modules": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Modules to prioritize in review (e.g. auth, payments)"
-            }
-          }
-        },
-        "nextjs": {
-          "type": "object",
-          "properties": {
-            "app_router": { "type": "boolean" },
-            "check_client_components": { "type": "boolean" }
-          }
-        }
-      },
-      "additionalProperties": true
-    },
-    "conventions": {
-      "type": "object",
-      "description": "Project conventions configuration",
-      "properties": {
-        "paths": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Paths to convention files (relative to repo root)"
-        },
-        "sections": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "array",
-            "items": { "type": "string" }
-          }
         }
       }
     }
