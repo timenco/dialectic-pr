@@ -28,9 +28,9 @@ export class PrivacyGuard {
 ║  analysis. By continuing, you acknowledge this data transfer.     ║
 ║                                                                    ║
 ║  To exclude sensitive files, configure 'exclude_patterns' in      ║
-║  your .github/dialectic-pr.json                                   ║
+║  your .github/longblack-pr-review.json                             ║
 ║                                                                    ║
-║  Docs: https://github.com/dialectic-pr/dialectic-pr#privacy       ║
+║  Docs: https://github.com/timenco/longblack-pr-review#privacy     ║
 ╚════════════════════════════════════════════════════════════════════╝
     `);
   }

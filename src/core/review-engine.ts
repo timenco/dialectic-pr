@@ -24,7 +24,7 @@ import { ProjectRulesLoader } from "../false-positive/project-rules-loader.js";
 function formatReviewBody(result: ReviewResult, analysis: PRAnalysis): string {
   const lines: string[] = [];
 
-  lines.push("## 🤖 Dialectic PR Review");
+  lines.push("## 🤖 Longblack PR Review");
   lines.push("");
   lines.push(
     `**Framework**: ${analysis.context.framework.name} ${analysis.context.framework.version || ""}`
@@ -88,7 +88,7 @@ function formatReviewBody(result: ReviewResult, analysis: PRAnalysis): string {
   );
   lines.push("");
   lines.push(
-    "*Powered by [Dialectic PR](https://github.com/timenco/dialectic-pr)*"
+    "*Powered by [Longblack PR Review](https://github.com/timenco/longblack-pr-review)*"
   );
 
   return lines.join("\n");
@@ -101,7 +101,7 @@ function formatReviewBody(result: ReviewResult, analysis: PRAnalysis): string {
  * Does NOT call process.exit() — callers are responsible for exit behavior.
  */
 export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
-  logger.section("Dialectic PR Review");
+  logger.section("Longblack PR Review");
 
   // 1. Privacy Guard
   const privacyGuard = new PrivacyGuard();
@@ -161,7 +161,7 @@ export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
   // Skip strategy — post warning and return early
   if (strategy.name === "skip") {
     logger.warn("⚠️ PR is too large for meaningful review");
-    const skipBody = `## 🤖 Dialectic PR Review\n\n⚠️ **PR Too Large**: This PR is too large for meaningful AI review (${(analysis.metrics.diffSize / 1024).toFixed(1)} KB).\n\nPlease split this into smaller PRs for better review quality.`;
+    const skipBody = `## 🤖 Longblack PR Review\n\n⚠️ **PR Too Large**: This PR is too large for meaningful AI review (${(analysis.metrics.diffSize / 1024).toFixed(1)} KB).\n\nPlease split this into smaller PRs for better review quality.`;
 
     let posted = false;
     if (!options.dryRun) {
@@ -233,7 +233,7 @@ export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
   if (result.issues.length > 0) {
     commentBody = formatReviewBody(result, analysis);
   } else {
-    commentBody = `## 🤖 Dialectic PR Review\n\n✅ ${result.summary.overallAssessment}`;
+    commentBody = `## 🤖 Longblack PR Review\n\n✅ ${result.summary.overallAssessment}`;
   }
 
   if (!options.dryRun) {

@@ -35,7 +35,7 @@ describe("ConfigLoader", () => {
       if (!existsSync(githubDir)) {
         await mkdir(githubDir, { recursive: true });
       }
-      const configPath = join(githubDir, "dialectic-pr.json");
+      const configPath = join(githubDir, "longblack-pr-review.json");
       await writeFile(
         configPath,
         JSON.stringify({
@@ -53,7 +53,7 @@ describe("ConfigLoader", () => {
       if (!existsSync(githubDir)) {
         await mkdir(githubDir, { recursive: true });
       }
-      const configPath = join(githubDir, "dialectic-pr.json");
+      const configPath = join(githubDir, "longblack-pr-review.json");
       await writeFile(
         configPath,
         JSON.stringify({

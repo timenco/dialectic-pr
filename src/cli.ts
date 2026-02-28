@@ -11,7 +11,7 @@ import { ReviewOptions, ValidationError } from "./core/types.js";
 const program = new Command();
 
 program
-  .name("dialectic-pr")
+  .name("longblack-pr-review")
   .description("The AI Code Reviewer for TypeScript Projects")
   .version("1.0.0");
 
@@ -20,26 +20,26 @@ program
  */
 program
   .command("init")
-  .description("Initialize Dialectic PR configuration")
+  .description("Initialize Longblack PR Review configuration")
   .action(async () => {
     try {
-      logger.section("Dialectic PR Initialization");
+      logger.section("Longblack PR Review Initialization");
 
       await initCommand();
 
-      logger.success("\n✅ Dialectic PR 설정 완료!");
+      logger.success("\n✅ Longblack PR Review 설정 완료!");
       console.log(`
 생성된 파일:
-  - .github/dialectic-pr.json (설정 파일)
+  - .github/longblack-pr-review.json (설정 파일)
   - .github/review-guardrails.json (FP 패턴 설정)
-  - .github/workflows/dialectic-pr-review.yml (워크플로우)
+  - .github/workflows/longblack-pr-review.yml (워크플로우)
 
 다음 단계:
   1. GitHub Secrets에 ANTHROPIC_API_KEY 추가
   2. PR을 열어 첫 리뷰 받기
   3. (선택) CLAUDE.md에 프로젝트 컨텍스트 작성
 
-문서: https://github.com/timenco/dialectic-pr#readme
+문서: https://github.com/timenco/longblack-pr-review#readme
       `);
 
       process.exit(0);
@@ -104,10 +104,10 @@ async function initCommand(): Promise<void> {
     logger.info("Created .github/workflows directory");
   }
 
-  // 1. dialectic-pr.json 생성
-  const configPath = join(githubDir, "dialectic-pr.json");
+  // 1. longblack-pr-review.json 생성
+  const configPath = join(githubDir, "longblack-pr-review.json");
   const configTemplate = `{
-  "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
+  "$schema": "https://raw.githubusercontent.com/timenco/longblack-pr-review/main/config/longblack-pr-review-schema.json",
   "model": "claude-sonnet-4-20250514",
   "exclude_patterns": []
 }
@@ -129,8 +129,8 @@ async function initCommand(): Promise<void> {
   }
 
   // 2. workflow.yml 생성
-  const workflowPath = join(workflowsDir, "dialectic-pr-review.yml");
-  const workflowTemplate = `name: Dialectic PR Review
+  const workflowPath = join(workflowsDir, "longblack-pr-review.yml");
+  const workflowTemplate = `name: Longblack PR Review
 
 on:
   pull_request:
@@ -153,8 +153,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Dialectic PR Review
-        uses: timenco/dialectic-pr@v1
+      - name: Longblack PR Review
+        uses: timenco/longblack-pr-review@v1
         with:
           anthropic_api_key: \${{ secrets.ANTHROPIC_API_KEY }}
 `;

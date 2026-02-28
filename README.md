@@ -1,4 +1,4 @@
-# Dialectic PR
+# Longblack PR Review
 
 > **TypeScript/JavaScript 프로젝트를 위한 AI 코드 리뷰어**
 
@@ -8,7 +8,7 @@ NestJS, Next.js, React, Express 프레임워크에 특화된 Claude 기반 PR �
 
 - **Hawk/Owl 합의 시스템**: Hawk(비판적 리뷰어)가 이슈를 찾고, Owl(실용적 검증자)이 ROI 기반으로 필터링
 - **38개 내장 FP 패턴**: SQL injection, 에러 핸들링, DI 등 알려진 오탐을 자동 억제
-- **3계층 규칙 시스템**: 빌트인 패턴 + 외부 FP 파일(`false_positive_files`) + 인라인 패턴
+- **Convention over Configuration**: `CLAUDE.md`와 `.github/review-guardrails.json`을 자동 감지하여 별도 설정 없이 동작
 - **Prompt Caching**: 시스템 메시지 캐싱으로 반복 리뷰 비용 최대 90% 절감
 - **Framework-Aware**: NestJS, Next.js, React, Express 자동 감지 및 프레임워크별 리뷰 규칙
 - **Smart Filtering**: 파일 우선순위 기반으로 토큰 예산 내에서 중요 파일 먼저 리뷰
@@ -17,10 +17,10 @@ NestJS, Next.js, React, Express 프레임워크에 특화된 Claude 기반 PR �
 
 ### 1. 워크플로우 추가
 
-`.github/workflows/dialectic-pr-review.yml`:
+`.github/workflows/longblack-pr-review.yml`:
 
 ```yaml
-name: Dialectic PR Review
+name: Longblack PR Review
 on:
   pull_request:
     types: [opened, synchronize, labeled]
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: timenco/dialectic-pr@v1
+      - uses: timenco/longblack-pr-review@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -54,23 +54,25 @@ PR을 열면 자동으로 리뷰가 시작됩니다.
 
 ## 설정
 
-`.github/dialectic-pr.json`:
+`.github/longblack-pr-review.json`:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
+  "$schema": "https://raw.githubusercontent.com/timenco/longblack-pr-review/main/config/longblack-pr-review-schema.json",
   "model": "claude-sonnet-4-20250514",
   "language": "ko",
-  "context_files": ["CLAUDE.md"],
-  "false_positive_files": [".github/review-guardrails.json"],
-  "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**"],
-  "framework_specific": {
-    "nestjs": {
-      "priority_modules": ["auth", "payments"]
-    }
-  }
+  "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**"]
 }
 ```
+
+### 자동 감지 파일
+
+별도 설정 없이 다음 파일이 존재하면 자동으로 로드됩니다:
+
+| 파일 | 용도 |
+|------|------|
+| `CLAUDE.md` | 프로젝트 컨텍스트 (아키텍처, 컨벤션 등) → User Message에 주입 |
+| `.github/review-guardrails.json` | 프로젝트 고유 FP 패턴 → System Message에 주입 |
 
 ### 설정 옵션
 
@@ -78,12 +80,7 @@ PR을 열면 자동으로 리뷰가 시작됩니다.
 |------|------|--------|------|
 | `model` | string | `claude-sonnet-4-20250514` | 사용할 Claude 모델 |
 | `language` | string | — | 리뷰 출력 언어 (ISO 639-1, 예: `ko`, `en`, `ja`) |
-| `context_files` | string[] | `[]` | 리뷰 컨텍스트에 포함할 파일 (CLAUDE.md 등) |
-| `false_positive_files` | string[] | `[]` | 외부 FP 패턴 JSON 파일 경로 |
 | `exclude_patterns` | string[] | `[]` | 리뷰에서 제외할 글로브 패턴 |
-| `false_positive_patterns` | object[] | `[]` | 인라인 FP 패턴 정의 |
-| `framework_specific` | object | `{}` | 프레임워크별 추가 설정 |
-| `conventions` | object | — | 컨벤션 파일 경로 (`paths`) |
 | `strategies` | object | — | PR 크기별 토큰 예산 오버라이드 |
 
 ### Action Inputs
@@ -92,7 +89,7 @@ PR을 열면 자동으로 리뷰가 시작됩니다.
 |-------|------|--------|------|
 | `anthropic_api_key` | ✅ | — | Anthropic API key |
 | `github_token` | — | `${{ github.token }}` | GitHub token |
-| `config_path` | — | `.github/dialectic-pr.json` | 설정 파일 경로 |
+| `config_path` | — | `.github/longblack-pr-review.json` | 설정 파일 경로 |
 | `log_level` | — | `info` | 로그 레벨 (debug\|info\|warn\|error) |
 | `dry_run` | — | `false` | 리뷰 포스트 없이 실행 |
 
@@ -111,18 +108,17 @@ PR을 열면 자동으로 리뷰가 시작됩니다.
 ```
 System Message (캐시됨, Owl의 FP 판별 기준):
   ├── Hawk/Owl 합의 지침                          ← 자동 (불변)
-  ├── FALSE_POSITIVE_PATTERNS:                     ← 아래 3개 소스가 머지됨
+  ├── FALSE_POSITIVE_PATTERNS:                     ← 아래 소스가 머지됨
   │     빌트인 38개                                  자동 (프레임워크별)
-  │     + false_positive_files (외부 JSON)           사용자 설정
-  │     + false_positive_patterns (인라인)            사용자 설정
+  │     + .github/review-guardrails.json             자동 감지
   ├── Framework Best Practices                     ← 자동 (감지된 프레임워크)
   └── Language 지시                                ← language 설정
 
 User Message (매 PR마다 변경, Owl의 맥락 판단 근거):
   ├── REVIEW_CONTEXT (framework, flags)            ← 자동
   ├── STRATEGY + INSTRUCTIONS                      ← 자동 (PR 크기 기반)
-  ├── PROJECT_CONVENTIONS:                         ← context_files 내용
-  │     {context_files 파일 전문}
+  ├── PROJECT_CONVENTIONS:                         ← CLAUDE.md 내용 (자동 감지)
+  │     {CLAUDE.md 파일 전문}
   └── DIFF                                         ← PR diff
 ```
 
@@ -134,7 +130,7 @@ Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
 
 ### 무엇을 어디에 넣을 것인가
 
-#### `false_positive_files` — 프로젝트 고유의 구조화된 FP 패턴
+#### `.github/review-guardrails.json` — 프로젝트 고유의 구조화된 FP 패턴
 
 **용도**: 빌트인 38개가 커버하지 못하는, 이 프로젝트만의 안전한 패턴.
 
@@ -142,11 +138,6 @@ Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
 - 프로젝트가 사용하는 라이브러리/인프라의 안전한 패턴
 - 반복적으로 FP가 발생하는 프로젝트 고유 코드 패턴
 - 명확한 기술적 근거가 있는 예외
-
-**넣지 말아야 하는 것**:
-- "이 프로젝트에서는 코드 스타일 X가 정상" → `context_files`로
-- 빌트인 패턴과 중복되는 것 → 이미 자동 적용됨
-- "일단 무시해" 같은 임시 예외 → `false_positive_patterns` 인라인으로
 
 **파일 형식** (배열 또는 `{ "patterns": [...] }` 모두 지원):
 
@@ -192,37 +183,9 @@ Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
 
 규칙: **Hawk가 실제로 쓸 법한 문장**을 넣으세요. 리뷰 출력에서 이 문자열이 부분 매칭됩니다.
 
-#### `false_positive_patterns` — 인라인 간편 패턴
-
-**용도**: 별도 파일을 만들 필요 없는 1~2개의 간단한 패턴.
-
-```json
-{
-  "false_positive_patterns": [
-    {
-      "id": "our-custom-decorator",
-      "category": "authentication",
-      "explanation": "@RequireAdmin은 내부 인증 데코레이터로 JwtGuard를 포함",
-      "falsePositiveIndicators": ["missing authentication on admin endpoint"]
-    }
-  ]
-}
-```
-
-**`false_positive_files` vs `false_positive_patterns` 선택 기준**:
-
-| 상황 | 선택 |
-|------|------|
-| 패턴이 3개 이상 | `false_positive_files` (별도 JSON 파일) |
-| 패턴이 1~2개 | `false_positive_patterns` (인라인) |
-| 여러 프로젝트에서 공유 | `false_positive_files` (공통 파일 참조) |
-| 빌트인 패턴을 오버라이드 | 어디든 가능 (동일 `id`로 정의하면 후순위 우선) |
-
-#### `context_files` — 서술형 프로젝트 맥락
+#### `CLAUDE.md` — 서술형 프로젝트 맥락
 
 **용도**: 기술적 제약과 아키텍처 결정을 자연어로 기술. Owl이 맥락 판단에 사용.
-
-**주의**: 이 파일의 내용은 `PROJECT_CONVENTIONS:`로 User Message에 **그대로** 주입됩니다. "X는 괜찮다", "Y는 무시해도 된다"가 많을수록 Owl이 관대해집니다.
 
 **넣어야 하는 것** (기술적 제약):
 ```markdown
@@ -241,16 +204,12 @@ Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
 - camelCase 사용
 - import 순서: external → internal
 
-## 개발 워크플로우                 ← 리뷰와 무관
-- feature 브랜치에서 작업
-- PR 템플릿 사용
-
 ## 허용 예외                       ← 위험: Owl 과도 관대화
-- 테스트에서 as any 허용           ← false_positive_files로 이동
+- 테스트에서 as any 허용           ← review-guardrails.json으로 이동
 - console.log 허용                 ← 빌트인 패턴이 이미 커버
 ```
 
-**핵심 원칙**: `context_files`에는 "무엇이 안전한가"가 아니라 "이 프로젝트가 어떻게 구성되어 있는가"를 넣으세요. "안전한 패턴"은 `false_positive_files`의 구조화된 패턴으로 표현해야 Owl이 정밀하게 동작합니다.
+**핵심 원칙**: `CLAUDE.md`에는 "무엇이 안전한가"가 아니라 "이 프로젝트가 어떻게 구성되어 있는가"를 넣으세요. "안전한 패턴"은 `.github/review-guardrails.json`의 구조화된 패턴으로 표현해야 Owl이 정밀하게 동작합니다.
 
 ### 설정 우선순위와 중복 제거
 
@@ -258,34 +217,27 @@ Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
 로드 순서 (후순위가 동일 ID를 오버라이드):
   1. 빌트인 패턴 38개
   2. 프레임워크별 패턴 (FrameworkRegistry)
-  3. false_positive_files 외부 파일
-  4. false_positive_patterns 인라인
+  3. .github/review-guardrails.json (자동 감지)
 ```
 
-예: 빌트인의 `prisma-tagged-template-safe`를 프로젝트에서 재정의하고 싶으면, `false_positive_files`나 인라인에 동일 `id`로 새 `explanation`과 `falsePositiveIndicators`를 정의하면 됩니다.
+예: 빌트인의 `prisma-tagged-template-safe`를 프로젝트에서 재정의하고 싶으면, `.github/review-guardrails.json`에 동일 `id`로 새 `explanation`과 `falsePositiveIndicators`를 정의하면 됩니다.
 
 ### 실전 예시: NestJS + Prisma + Aurora 프로젝트
 
 ```
 .github/
-  dialectic-pr.json          # 메인 설정
-  review-guardrails.json     # 프로젝트 FP 패턴 (6개)
+  longblack-pr-review.json    # 메인 설정
+  review-guardrails.json       # 프로젝트 FP 패턴 (6개)
+CLAUDE.md                      # 프로젝트 컨텍스트 (자동 감지)
 ```
 
-**`.github/dialectic-pr.json`**:
+**`.github/longblack-pr-review.json`**:
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
+  "$schema": "https://raw.githubusercontent.com/timenco/longblack-pr-review/main/config/longblack-pr-review-schema.json",
   "model": "claude-sonnet-4-20250514",
   "language": "ko",
-  "context_files": ["CLAUDE-review.md"],
-  "false_positive_files": [".github/review-guardrails.json"],
-  "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**", "**/cdk.out/**"],
-  "framework_specific": {
-    "nestjs": {
-      "priority_modules": ["auth", "payments", "memberships", "orders"]
-    }
-  }
+  "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**", "**/cdk.out/**"]
 }
 ```
 
@@ -326,7 +278,7 @@ Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
 ]
 ```
 
-**`CLAUDE-review.md`** (리뷰 전용 컨텍스트, CLAUDE.md 원본과 별도):
+**`CLAUDE.md`** (프로젝트 컨텍스트, 자동 감지):
 ```markdown
 # Review Context
 
@@ -354,7 +306,7 @@ Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
 - 잠재적 이슈 목록 생성
 
 ### Owl (Pragmatic Validator)
-- Hawk의 이슈를 False Positive 패턴(빌트인 + 외부 + 인라인)과 대조
+- Hawk의 이슈를 False Positive 패턴(빌트인 + guardrails)과 대조
 - ROI 평가 및 실용적 필터링
 - 프로덕션 영향도 기반 검증
 
@@ -370,7 +322,7 @@ GitHub Actions
         → PR Analyzer → Framework Detector → Smart Filter
           → Strategy Selector
             → ProjectRulesLoader (빌트인 + 프레임워크 FP 패턴)
-            → ConfigLoader.loadFalsePositiveFiles (외부 FP 파일)
+            → ConfigLoader.loadGuardrails (review-guardrails.json 자동 감지)
               → Consensus Engine (Hawk + Owl)
                 → Claude API (prompt caching) → GitHub API
 ```
@@ -417,7 +369,7 @@ npm run lint
 ## 프로젝트 구조
 
 ```
-dialectic-pr/
+longblack-pr-review/
 ├── src/
 │   ├── core/              # 리뷰 엔진, 분석기, 전략, 합의 엔진
 │   ├── adapters/          # Claude API, GitHub API, 재시도 핸들러

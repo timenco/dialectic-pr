@@ -1,5 +1,5 @@
 /**
- * Dialectic PR
+ * Longblack PR Review
  * AI code reviewer for TypeScript projects with multi-persona consensus
  */
 

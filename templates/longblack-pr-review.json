@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/timenco/longblack-pr-review/main/config/longblack-pr-review-schema.json",
+  "model": "claude-sonnet-4-20250514",
+  "exclude_patterns": [
+    "**/*.lock",
+    "**/*.min.js",
+    "**/dist/**",
+    "**/node_modules/**"
+  ]
+}

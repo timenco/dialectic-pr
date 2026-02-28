@@ -1,5 +1,0 @@
-{
-  "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
-  "model": "claude-sonnet-4-20250514",
-  "exclude_patterns": []
-}

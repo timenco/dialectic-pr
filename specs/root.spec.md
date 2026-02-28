@@ -1,11 +1,11 @@
-# Dialectic PR - Architecture Reference
+# Longblack PR Review - Architecture Reference
 
 > 내부 개발 참조 문서. 사용자 가이드는 [README.md](../README.md) 참조.
 
 ## 시스템 개요
 
 ```yaml
-project: dialectic-pr
+project: longblack-pr-review
 version: 1.0.0
 runtime: node >= 18
 language: typescript (ESM)
@@ -23,7 +23,7 @@ GitHub Actions / CLI
 review-engine.ts (runReview — 메인 오케스트레이션)
   ├── PrivacyGuard          — 환경 변수 검증, 시크릿 탐지
   ├── ExcludeFilter         — 민감/생성 파일 제외 (glob)
-  ├── ConfigLoader          — .github/dialectic-pr.json 로드 + 머지
+  ├── ConfigLoader          — .github/longblack-pr-review.json 로드 + 머지
   │   └── loadFalsePositiveFiles()  — 외부 FP JSON 파일 로드
   ├── PRAnalyzer            — diff 분석, 메트릭, 컨텍스트 플래그
   │   ├── FrameworkDetector — NestJS/Next.js/React/Express/Vanilla 자동 감지
@@ -92,14 +92,14 @@ tests/
 
 config/
   default.json                 # 기본 설정
-  dialectic-pr-schema.json     # JSON Schema (에디터 자동완성 지원)
+  longblack-pr-review-schema.json     # JSON Schema (에디터 자동완성 지원)
 ```
 
 ## 핵심 타입 (types.ts)
 
 ```typescript
 // 설정
-interface DialecticConfig {
+interface LongblackConfig {
   model: string;
   language?: string;
   context_files?: string[];           // 컨텍스트 파일 (→ User Message)
@@ -133,7 +133,7 @@ interface ReviewResult {
 
 ```
 1. PrivacyGuard         — 환경 변수 확인, 데이터 전송 고지
-2. ConfigLoader.load()  — .github/dialectic-pr.json 로드
+2. ConfigLoader.load()  — .github/longblack-pr-review.json 로드
 3. Adapters 초기화      — ClaudeAdapter, GitHubAdapter
 4. ExcludeFilter        — 제외 패턴 설정
 5. PR 데이터 가져오기   — diff + files from GitHub API

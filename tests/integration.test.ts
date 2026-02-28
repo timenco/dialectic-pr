@@ -1,5 +1,5 @@
 /**
- * Integration Tests for Dialectic PR
+ * Integration Tests for Longblack PR Review
  *
  * Tests the complete flow from PR analysis to review generation
  */
@@ -16,7 +16,7 @@ import type { ChangedFile } from '../src/core/types';
 import * as fs from 'fs';
 import * as path from 'path';
 
-describe('Dialectic PR Integration Tests', () => {
+describe('Longblack PR Review Integration Tests', () => {
   let analyzer: PRAnalyzer;
   let consensusEngine: ConsensusEngine;
   let strategySelector: StrategySelector;

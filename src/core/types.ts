@@ -1,5 +1,5 @@
 /**
- * Core type definitions for Dialectic PR
+ * Core type definitions for Longblack PR Review
  */
 
 // ============================================================================
@@ -300,7 +300,7 @@ export interface CLIOptions {
 // Configuration
 // ============================================================================
 
-export interface DialecticConfig {
+export interface LongblackConfig {
   model: string;
   language?: string;
   exclude_patterns: string[];
@@ -319,18 +319,18 @@ export interface StrategyConfig {
 // Error Types
 // ============================================================================
 
-export class DialecticError extends Error {
+export class LongblackError extends Error {
   constructor(
     message: string,
     public code: string,
     public details?: unknown
   ) {
     super(message);
-    this.name = "DialecticError";
+    this.name = "LongblackError";
   }
 }
 
-export class APIError extends DialecticError {
+export class APIError extends LongblackError {
   constructor(
     public statusCode: number,
     message: string,
@@ -341,14 +341,14 @@ export class APIError extends DialecticError {
   }
 }
 
-export class ConfigError extends DialecticError {
+export class ConfigError extends LongblackError {
   constructor(message: string, details?: unknown) {
     super(message, "CONFIG_ERROR", details);
     this.name = "ConfigError";
   }
 }
 
-export class ValidationError extends DialecticError {
+export class ValidationError extends LongblackError {
   constructor(message: string, details?: unknown) {
     super(message, "VALIDATION_ERROR", details);
     this.name = "ValidationError";

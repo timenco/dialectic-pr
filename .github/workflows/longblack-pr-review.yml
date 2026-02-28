@@ -1,4 +1,4 @@
-name: Dialectic PR Review
+name: Longblack PR Review
 
 on:
   pull_request:
@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Dialectic PR Review
-        uses: timenco/dialectic-pr@v1
+      - name: Longblack PR Review
+        uses: timenco/longblack-pr-review@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎉 Phase 1 Complete: Core Engine
 
-This is the initial release of Dialectic PR - an AI Code Reviewer specialized for TypeScript projects!
+This is the initial release of Longblack PR Review - an AI Code Reviewer specialized for TypeScript projects!
 
 ### Added
 
@@ -44,9 +44,9 @@ This is the initial release of Dialectic PR - an AI Code Reviewer specialized fo
 
 #### Configuration
 - Default config template in `config/default.json`
-- User-facing template in `templates/dialectic-pr.json`
-- Conventions template in `templates/.dialectic-conventions.md`
-- GitHub Actions workflow in `.github/workflows/dialectic-pr.yml`
+- User-facing template in `templates/longblack-pr-review.json`
+- Conventions template in `templates/.longblack-conventions.md`
+- GitHub Actions workflow in `.github/workflows/longblack-pr-review.yml`
 
 #### Testing
 - Integration test suite with 15 test cases (100% passing)
