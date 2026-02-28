@@ -200,8 +200,6 @@ export class ConsensusEngine {
     const response = await this.claudeAdapter.sendAdvancedMessage(userMessage, {
       maxTokens: strategy.maxTokens,
       systemMessages,
-      enableThinking: true,
-      thinkingBudget: 2000,
     });
 
     // 4. Parse response

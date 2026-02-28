@@ -100,35 +100,4 @@ export class StrategySelector {
     return strategy;
   }
 
-  /**
-   * 전략 설명 가져오기
-   */
-  getStrategyDescription(strategy: ReviewStrategy): string {
-    return `
-Strategy: ${strategy.name.toUpperCase()}
-Max Tokens: ${strategy.maxTokens}
-Context Budget: ${strategy.contextTokenBudget}
-Instructions: ${strategy.instructions}
-    `.trim();
-  }
-
-  /**
-   * 커스텀 전략 설정
-   */
-  setCustomStrategy(name: StrategyName, strategy: Partial<ReviewStrategy>): void {
-    this.strategies[name] = {
-      ...this.strategies[name],
-      ...strategy,
-      name, // name은 변경 불가
-    };
-  }
-
-  /**
-   * 모든 전략 가져오기
-   */
-  getAllStrategies(): Record<StrategyName, ReviewStrategy> {
-    return { ...this.strategies };
-  }
 }
-
-

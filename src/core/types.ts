@@ -191,10 +191,6 @@ export interface ClaudeOptions {
   model?: string;
   maxTokens: number;
   temperature?: number;
-  /** Enable extended thinking for complex analysis */
-  enableThinking?: boolean;
-  /** Token budget for extended thinking (default: 2000) */
-  thinkingBudget?: number;
 }
 
 export interface TokenUsage {
@@ -208,8 +204,6 @@ export interface TokenUsage {
 export interface ClaudeResponse {
   text: string;
   usage: TokenUsage;
-  /** Thinking content if extended thinking was enabled */
-  thinking?: string;
 }
 
 /**
@@ -227,21 +221,6 @@ export interface CachedSystemMessage {
 export interface AdvancedClaudeOptions extends ClaudeOptions {
   /** System messages with caching support */
   systemMessages?: CachedSystemMessage[];
-  /** Enable JSON schema mode for structured output */
-  jsonSchema?: CodeReviewSchema;
-}
-
-/**
- * JSON Schema for code review output
- */
-export interface CodeReviewSchema {
-  name: string;
-  strict: boolean;
-  schema: {
-    type: "object";
-    properties: Record<string, unknown>;
-    required: string[];
-  };
 }
 
 /**
