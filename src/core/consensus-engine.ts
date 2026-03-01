@@ -17,47 +17,44 @@ import { logger } from "../utils/logger.js";
  * Agent Consensus Instructions (cacheable - never changes)
  */
 const AGENT_CONSENSUS_INSTRUCTIONS = `
-SYSTEM: Multi-Persona Code Review
+SYSTEM: Dialectic Multi-Persona Code Review
 
-PERSONA_HAWK:
-  role: critical_reviewer
-  objectives:
-    - identify_potential_issues: [bugs, security_vulnerabilities, edge_cases]
-    - focus_areas: [error_handling, type_safety, async_operations]
-    - output: list_of_concerns
+You are a dialectic code review system with two internal personas: HAWK (critical reviewer) and OWL (pragmatic validator). You must produce a structured review in THREE explicit steps using natural-language markdown. The entire output will be posted as a GitHub PR comment, so make it readable and valuable.
 
-PERSONA_OWL:
-  role: pragmatic_validator
-  objectives:
-    - validate_hawk_concerns: true
-    - filter_criteria:
-      - check_false_positive_patterns: true
-      - evaluate_roi: true
-      - assess_production_impact: true
-    - output: filtered_actionable_issues
+=== OUTPUT FORMAT ===
 
-CONSENSUS_PROCESS:
-  step_1:
-    actor: HAWK
-    action: analyze_diff
-    output: potential_issues[]
-  
-  step_2:
-    actor: OWL
-    action: validate_each_issue
-    criteria:
-      - NOT in false_positive_patterns
-      - production_bug_prevention: true
-      - high_confidence: true
-      - high_roi: true
-    output: consensus_issues[]
-  
-  step_3:
-    action: report_only_consensus_issues
-    format: json_schema
+You MUST output EXACTLY this structure:
 
-QUALITY_OVER_QUANTITY: true
-ACTIONABLE_FEEDBACK_ONLY: true
+=== STEP 1: REVIEW AGENT (HAWK) ANALYSIS ===
+
+As HAWK, perform a thorough analysis of the diff. For each potential issue found:
+- State the file, line, and issue type (bug/security/performance/maintainability)
+- Explain WHY it is a problem with concrete evidence from the diff
+- Assess confidence (high/medium) and production impact
+- List ALL concerns — do not self-filter at this stage
+
+=== STEP 2: DEV AGENT (OWL) CHALLENGE ===
+
+As OWL, challenge EVERY issue HAWK raised:
+- For each HAWK issue, explicitly AGREE or REJECT with reasoning
+- Apply false-positive pattern checks
+- Evaluate ROI: is the fix worth the effort?
+- Check: would this actually cause a production bug, or is it stylistic/theoretical?
+- Provide a verdict: APPROVE / REQUEST_CHANGES / COMMENT
+
+=== STEP 3: FINAL CONSENSUS ===
+
+Synthesize the debate into a final consensus:
+1. Executive summary of the review (2-3 sentences)
+2. Highlight what the PR does well (positive feedback)
+3. List only the AGREED issues (issues both HAWK and OWL accept)
+4. End with a JSON block in the schema provided
+
+RULES:
+- QUALITY_OVER_QUANTITY: Only consensus issues survive to the final JSON
+- Be specific: reference actual code, line numbers, variable names
+- Be constructive: explain WHY and suggest HOW to fix
+- Positive feedback is mandatory: acknowledge good patterns
 `.trim();
 
 /**
@@ -226,6 +223,7 @@ export class ConsensusEngine {
       issues: parsed.issues,
       summary,
       metadata,
+      debateNarrative: parsed.debateNarrative,
     };
   }
 
@@ -297,6 +295,12 @@ REVIEW_CONTEXT:
     schema_changed: ${analysis.context.flags.schemaChanged}
     config_only: ${analysis.context.flags.configOnly}
 
+METRICS:
+  files_changed: ${analysis.metrics.fileCount}
+  lines_added: ${analysis.metrics.addedLines}
+  lines_deleted: ${analysis.metrics.deletedLines}
+  core_files: ${analysis.metrics.coreFileCount}
+
 STRATEGY: ${strategy.name}
 INSTRUCTIONS: ${strategy.instructions}
 
@@ -307,7 +311,8 @@ DIFF:
 ${analysis.prioritizedDiff}
 \`\`\`
 
-OUTPUT_SCHEMA:
+STEP_3_JSON_SCHEMA (place this JSON block at the END of STEP 3):
+\`\`\`json
 {
   "issues": [
     {
@@ -321,14 +326,21 @@ OUTPUT_SCHEMA:
     }
   ],
   "consensus": {
-    "totalReviewed": "number",
-    "issuesRaised": "number",
-    "issuesFiltered": "number",
+    "totalReviewed": "number (files reviewed)",
+    "issuesRaised": "number (HAWK issues before filtering)",
+    "issuesFiltered": "number (issues rejected by OWL)",
+    "agreedIssues": "number (issues both agree on)",
+    "rejectedIssues": "number (issues OWL rejected)",
+    "fpRate": "string (e.g. '2/5 = 40%')",
+    "verdict": "APPROVE|REQUEST_CHANGES|COMMENT",
+    "mergeable": "boolean",
+    "priority": "critical|high|medium|low",
     "overallAssessment": "string"
   }
 }
+\`\`\`
 
-RESPOND_WITH_VALID_JSON_ONLY
+Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural language markdown, then end STEP 3 with the JSON block.
     `.trim();
   }
 
@@ -358,11 +370,27 @@ RESPOND_WITH_VALID_JSON_ONLY
    */
   private parseReviewResponse(responseText: string): CodeReviewResponse {
     try {
-      // Try to extract JSON from code block first
-      const jsonMatch = responseText.match(/```(?:json)?\s*\n([\s\S]*?)\n```/);
-      const jsonText = jsonMatch ? jsonMatch[1] : responseText;
+      // Find the LAST ```json ``` block (STEP 3 JSON)
+      const jsonBlocks = [...responseText.matchAll(/```(?:json)?\s*\n([\s\S]*?)\n```/g)];
+      let jsonText: string;
+      let debateNarrative: string | undefined;
 
-      // Clean up any potential issues
+      if (jsonBlocks.length > 0) {
+        // Use the last JSON block
+        const lastBlock = jsonBlocks[jsonBlocks.length - 1];
+        jsonText = lastBlock[1];
+
+        // Everything before the last JSON block is the debate narrative
+        const lastBlockStart = lastBlock.index!;
+        const narrativeText = responseText.substring(0, lastBlockStart).trim();
+        if (narrativeText.length > 0) {
+          debateNarrative = narrativeText;
+        }
+      } else {
+        // Fallback: try entire response as JSON (backward compat)
+        jsonText = responseText;
+      }
+
       const cleanedJson = jsonText.trim();
       const parsed = JSON.parse(cleanedJson);
 
@@ -377,6 +405,7 @@ RESPOND_WITH_VALID_JSON_ONLY
             issuesFiltered: 0,
             overallAssessment: "Failed to parse review response",
           },
+          debateNarrative,
         };
       }
 
@@ -391,18 +420,28 @@ RESPOND_WITH_VALID_JSON_ONLY
         suggestion: issue.suggestion as string | undefined,
       }));
 
-      // Normalize consensus
-      const consensus = parsed.consensus || {
-        totalReviewed: 0,
-        issuesRaised: issues.length,
-        issuesFiltered: 0,
-        overallAssessment: issues.length > 0 ? "Issues found" : "No issues found",
+      // Normalize consensus (with extended fields)
+      const consensus = {
+        totalReviewed: parsed.consensus?.totalReviewed ?? 0,
+        issuesRaised: parsed.consensus?.issuesRaised ?? issues.length,
+        issuesFiltered: parsed.consensus?.issuesFiltered ?? 0,
+        overallAssessment: parsed.consensus?.overallAssessment ??
+          (issues.length > 0 ? "Issues found" : "No issues found"),
+        agreedIssues: parsed.consensus?.agreedIssues as number | undefined,
+        rejectedIssues: parsed.consensus?.rejectedIssues as number | undefined,
+        fpRate: parsed.consensus?.fpRate as string | undefined,
+        verdict: parsed.consensus?.verdict as string | undefined,
+        mergeable: parsed.consensus?.mergeable as boolean | undefined,
+        priority: parsed.consensus?.priority as string | undefined,
       };
 
-      return { issues, consensus };
+      return { issues, consensus, debateNarrative };
     } catch (error) {
       logger.error(`Failed to parse review response: ${error}`);
       logger.debug(`Response text: ${responseText.substring(0, 500)}`);
+
+      // Even if JSON parsing fails, try to salvage the narrative
+      const hasStepMarkers = responseText.includes("STEP 1") || responseText.includes("STEP 2");
       return {
         issues: [],
         consensus: {
@@ -411,6 +450,7 @@ RESPOND_WITH_VALID_JSON_ONLY
           issuesFiltered: 0,
           overallAssessment: "Failed to parse review response",
         },
+        debateNarrative: hasStepMarkers ? responseText : undefined,
       };
     }
   }
@@ -445,6 +485,10 @@ RESPOND_WITH_VALID_JSON_ONLY
       criticalIssues,
       affectedAreas: analysis.context.affectedAreas,
       overallAssessment,
+      verdict: consensus.verdict,
+      mergeable: consensus.mergeable,
+      priority: consensus.priority,
+      fpRate: consensus.fpRate,
     };
   }
 

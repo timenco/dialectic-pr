@@ -19,73 +19,151 @@ import { ConfigLoader } from "../utils/config-loader.js";
 import { ProjectRulesLoader } from "../false-positive/project-rules-loader.js";
 
 /**
+ * Extract consensus data from summary, with fallback inference from issues
+ */
+function extractConsensusData(result: ReviewResult): {
+  verdict: string;
+  mergeable: string;
+  priority: string;
+} {
+  let verdict = result.summary.verdict || "";
+  let mergeable = result.summary.mergeable !== undefined
+    ? (result.summary.mergeable ? "Yes" : "No")
+    : "";
+  let priority = result.summary.priority || "";
+
+  // Fallback inference if not provided by consensus
+  if (!verdict) {
+    const hasCritical = result.issues.some(
+      (i) => i.type === "security" || i.type === "bug"
+    );
+    if (result.issues.length === 0) verdict = "APPROVE";
+    else if (hasCritical) verdict = "REQUEST_CHANGES";
+    else verdict = "COMMENT";
+  }
+  if (!mergeable) {
+    mergeable = verdict === "REQUEST_CHANGES" ? "No" : "Yes";
+  }
+  if (!priority) {
+    if (verdict === "REQUEST_CHANGES") priority = "high";
+    else if (result.issues.length > 0) priority = "medium";
+    else priority = "low";
+  }
+
+  return { verdict, mergeable, priority };
+}
+
+/**
+ * Format issues as a flat list (fallback when no debateNarrative)
+ */
+function formatFallbackIssues(result: ReviewResult): string {
+  const lines: string[] = [];
+
+  if (result.issues.length === 0) {
+    lines.push("### Review");
+    lines.push("");
+    lines.push(result.summary.overallAssessment);
+    return lines.join("\n");
+  }
+
+  lines.push("### Issues");
+  lines.push("");
+
+  for (const issue of result.issues) {
+    const emoji = {
+      security: "🔐",
+      bug: "🐛",
+      performance: "⚡",
+      maintainability: "🔧",
+    }[issue.type];
+
+    lines.push(`#### ${emoji} ${issue.title}`);
+    lines.push("");
+    lines.push(
+      `**File**: \`${issue.file}\`${issue.line ? ` (Line ${issue.line})` : ""}`
+    );
+    lines.push(`**Type**: ${issue.type} | **Confidence**: ${issue.confidence}`);
+    lines.push("");
+    lines.push(issue.description);
+
+    if (issue.suggestion) {
+      lines.push("");
+      lines.push(`> **Suggestion**: ${issue.suggestion}`);
+    }
+
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+/**
  * Format review result into a GitHub comment body
  */
 function formatReviewBody(result: ReviewResult, analysis: PRAnalysis): string {
   const lines: string[] = [];
+  const { verdict, mergeable, priority } = extractConsensusData(result);
 
+  // Header
   lines.push("## 🤖 Dialectic PR Review");
   lines.push("");
+
+  // Metrics table
+  lines.push("### 📊 Review Metrics");
+  lines.push("");
+  lines.push("| Strategy | Files | Lines Changed | Affected Areas | Consensus | Flags |");
+  lines.push("|----------|-------|---------------|----------------|-----------|-------|");
+
+  const flagParts: string[] = [];
+  if (analysis.context.flags.criticalModule) flagParts.push("🔴 Critical");
+  if (analysis.context.flags.schemaChanged) flagParts.push("📐 Schema");
+  if (analysis.context.flags.testChanged) flagParts.push("🧪 Tests");
+  if (analysis.context.flags.configOnly) flagParts.push("⚙️ Config");
+  const flags = flagParts.length > 0 ? flagParts.join(", ") : "—";
+
+  const areas = result.summary.affectedAreas.length > 0
+    ? result.summary.affectedAreas.join(", ")
+    : "—";
+
   lines.push(
-    `**Framework**: ${analysis.context.framework.name} ${analysis.context.framework.version || ""}`
+    `| ${result.metadata.strategy} | ${result.metadata.filesReviewed} | +${analysis.metrics.addedLines} / -${analysis.metrics.deletedLines} | ${areas} | ${verdict} | ${flags} |`
   );
-  lines.push(`**Strategy**: ${result.metadata.strategy}`);
-  lines.push(`**Files Reviewed**: ${result.metadata.filesReviewed}`);
   lines.push("");
 
-  if (result.summary.affectedAreas.length > 0) {
-    lines.push(
-      `**Affected Areas**: ${result.summary.affectedAreas.join(", ")}`
-    );
-    lines.push("");
+  // Debate narrative (STEP 1, 2, 3) or fallback
+  if (result.debateNarrative) {
+    lines.push(result.debateNarrative);
+  } else {
+    lines.push(formatFallbackIssues(result));
   }
 
-  lines.push("### Summary");
   lines.push("");
-  lines.push(result.summary.overallAssessment);
+  lines.push("---");
   lines.push("");
 
-  if (result.issues.length > 0) {
-    lines.push("### Issues");
-    lines.push("");
+  // Final Verdict table
+  lines.push("### 📊 Final Verdict");
+  lines.push("");
+  lines.push("| Verdict | Mergeable | Priority |");
+  lines.push("|---------|-----------|----------|");
+  lines.push(`| ${verdict} | ${mergeable} | ${priority} |`);
+  lines.push("");
 
-    for (const issue of result.issues) {
-      const emoji = {
-        security: "🔐",
-        bug: "🐛",
-        performance: "⚡",
-        maintainability: "🔧",
-      }[issue.type];
-
-      lines.push(`#### ${emoji} ${issue.title}`);
-      lines.push("");
-      lines.push(
-        `**File**: \`${issue.file}\`${issue.line ? ` (Line ${issue.line})` : ""}`
-      );
-      lines.push(`**Type**: ${issue.type}`);
-      lines.push(`**Confidence**: ${issue.confidence}`);
-      lines.push("");
-      lines.push(issue.description);
-
-      if (issue.suggestion) {
-        lines.push("");
-        lines.push("**Suggestion**:");
-        lines.push("");
-        lines.push(issue.suggestion);
-      }
-
-      lines.push("");
-      lines.push("---");
-      lines.push("");
-    }
+  // Metadata in collapsible section
+  lines.push("<details>");
+  lines.push("<summary>📋 Review Metadata</summary>");
+  lines.push("");
+  lines.push(`- **Framework**: ${analysis.context.framework.name} ${analysis.context.framework.version || ""}`);
+  lines.push(`- **Tokens Used**: ${result.metadata.tokensUsed.toLocaleString()}`);
+  lines.push(`- **Duration**: ${(result.metadata.reviewDuration / 1000).toFixed(2)}s`);
+  lines.push(`- **Files Excluded**: ${result.metadata.filesExcluded}`);
+  if (result.summary.fpRate) {
+    lines.push(`- **FP Rate**: ${result.summary.fpRate}`);
   }
-
-  lines.push("### Metadata");
   lines.push("");
-  lines.push(`- Tokens Used: ${result.metadata.tokensUsed.toLocaleString()}`);
-  lines.push(
-    `- Duration: ${(result.metadata.reviewDuration / 1000).toFixed(2)}s`
-  );
+  lines.push("</details>");
   lines.push("");
   lines.push(
     "*Powered by [Dialectic PR Review](https://github.com/timenco/dialectic-pr)*"
@@ -226,14 +304,8 @@ export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
   logger.info(`Assessment: ${result.summary.overallAssessment}`);
 
   // 14. Format and post
-  let commentBody: string;
+  const commentBody = formatReviewBody(result, analysis);
   let posted = false;
-
-  if (result.issues.length > 0) {
-    commentBody = formatReviewBody(result, analysis);
-  } else {
-    commentBody = `## 🤖 Dialectic PR Review\n\n✅ ${result.summary.overallAssessment}`;
-  }
 
   if (!options.dryRun) {
     await githubAdapter.postComment(prInfo, commentBody);
