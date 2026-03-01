@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/timenco/longblack-pr-review/main/config/longblack-pr-review-schema.json",
-  "title": "Longblack PR Review Configuration",
-  "description": "Configuration file for Longblack PR Review — AI Code Reviewer for TypeScript Projects",
+  "$id": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
+  "title": "Dialectic PR Configuration",
+  "description": "Configuration file for Dialectic PR — AI Code Reviewer for TypeScript Projects",
   "type": "object",
   "properties": {
     "$schema": {

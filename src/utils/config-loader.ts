@@ -1,15 +1,15 @@
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { ConfigError, LongblackConfig, FalsePositivePattern, GuardrailsFile } from "../core/types.js";
+import { ConfigError, DialecticConfig, FalsePositivePattern, GuardrailsFile } from "../core/types.js";
 import { logger } from "./logger.js";
 
 /**
  * Configuration Loader
- * .github/longblack-pr-review.json 파일을 로드하고 검증
+ * .github/dialectic-pr.json 파일을 로드하고 검증
  */
 export class ConfigLoader {
-  private readonly defaultConfig: LongblackConfig = {
+  private readonly defaultConfig: DialecticConfig = {
     model: "claude-sonnet-4-20250514",
     language: undefined,
     exclude_patterns: [],
@@ -37,8 +37,8 @@ export class ConfigLoader {
   async load(
     repoPath: string,
     configPath?: string
-  ): Promise<LongblackConfig> {
-    const configFilePath = configPath || join(repoPath, ".github/longblack-pr-review.json");
+  ): Promise<DialecticConfig> {
+    const configFilePath = configPath || join(repoPath, ".github/dialectic-pr.json");
 
     // 설정 파일이 없으면 기본 설정 사용
     if (!existsSync(configFilePath)) {
@@ -54,12 +54,12 @@ export class ConfigLoader {
       this.warnDeprecatedFields(userConfig);
 
       // 기본 설정과 병합
-      const mergedConfig: LongblackConfig = {
+      const mergedConfig: DialecticConfig = {
         ...this.defaultConfig,
         ...this.pickValidFields(userConfig),
         strategies: {
           ...this.defaultConfig.strategies,
-          ...(userConfig.strategies as LongblackConfig["strategies"] | undefined),
+          ...(userConfig.strategies as DialecticConfig["strategies"] | undefined),
         },
       };
 
@@ -146,7 +146,7 @@ export class ConfigLoader {
   /**
    * 설정 검증
    */
-  private validateConfig(config: LongblackConfig): void {
+  private validateConfig(config: DialecticConfig): void {
     // 모델 이름 검증
     if (!config.model || typeof config.model !== "string") {
       throw new ConfigError("Invalid model configuration");
@@ -175,12 +175,12 @@ export class ConfigLoader {
   }
 
   /**
-   * Pick only valid LongblackConfig fields from user config
+   * Pick only valid DialecticConfig fields from user config
    */
   private pickValidFields(
     userConfig: Record<string, unknown>
-  ): Partial<LongblackConfig> {
-    const result: Partial<LongblackConfig> = {};
+  ): Partial<DialecticConfig> {
+    const result: Partial<DialecticConfig> = {};
     if (typeof userConfig.model === "string") result.model = userConfig.model;
     if (typeof userConfig.language === "string") result.language = userConfig.language;
     if (Array.isArray(userConfig.exclude_patterns)) {
@@ -220,7 +220,7 @@ export class ConfigLoader {
   /**
    * 기본 설정 가져오기
    */
-  getDefaultConfig(): LongblackConfig {
+  getDefaultConfig(): DialecticConfig {
     return { ...this.defaultConfig };
   }
 }

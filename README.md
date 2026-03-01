@@ -1,4 +1,4 @@
-# Longblack PR Review
+# Dialectic PR Review
 
 > **TypeScript/JavaScript 프로젝트를 위한 AI 코드 리뷰어**
 
@@ -17,10 +17,10 @@ NestJS, Next.js, React, Express 프레임워크에 특화된 Claude 기반 PR �
 
 ### 1. 워크플로우 추가
 
-`.github/workflows/longblack-pr-review.yml`:
+`.github/workflows/dialectic-pr.yml`:
 
 ```yaml
-name: Longblack PR Review
+name: Dialectic PR Review
 on:
   pull_request:
     types: [opened, synchronize, labeled]
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: timenco/longblack-pr-review@v1
+      - uses: timenco/dialectic-pr@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -54,11 +54,11 @@ PR을 열면 자동으로 리뷰가 시작됩니다.
 
 ## 설정
 
-`.github/longblack-pr-review.json`:
+`.github/dialectic-pr.json`:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/timenco/longblack-pr-review/main/config/longblack-pr-review-schema.json",
+  "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
   "model": "claude-sonnet-4-20250514",
   "language": "ko",
   "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**"]
@@ -89,7 +89,7 @@ PR을 열면 자동으로 리뷰가 시작됩니다.
 |-------|------|--------|------|
 | `anthropic_api_key` | ✅ | — | Anthropic API key |
 | `github_token` | — | `${{ github.token }}` | GitHub token |
-| `config_path` | — | `.github/longblack-pr-review.json` | 설정 파일 경로 |
+| `config_path` | — | `.github/dialectic-pr.json` | 설정 파일 경로 |
 | `log_level` | — | `info` | 로그 레벨 (debug\|info\|warn\|error) |
 | `dry_run` | — | `false` | 리뷰 포스트 없이 실행 |
 
@@ -226,15 +226,15 @@ Owl은 Hawk가 제기한 이슈를 두 곳에서 검증합니다:
 
 ```
 .github/
-  longblack-pr-review.json    # 메인 설정
+  dialectic-pr.json    # 메인 설정
   review-guardrails.json       # 프로젝트 FP 패턴 (6개)
 CLAUDE.md                      # 프로젝트 컨텍스트 (자동 감지)
 ```
 
-**`.github/longblack-pr-review.json`**:
+**`.github/dialectic-pr.json`**:
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/timenco/longblack-pr-review/main/config/longblack-pr-review-schema.json",
+  "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
   "model": "claude-sonnet-4-20250514",
   "language": "ko",
   "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**", "**/cdk.out/**"]
@@ -369,7 +369,7 @@ npm run lint
 ## 프로젝트 구조
 
 ```
-longblack-pr-review/
+dialectic-pr/
 ├── src/
 │   ├── core/              # 리뷰 엔진, 분석기, 전략, 합의 엔진
 │   ├── adapters/          # Claude API, GitHub API, 재시도 핸들러

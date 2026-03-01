@@ -1,5 +1,5 @@
 {
-  "name": "longblack-pr-review",
+  "name": "dialectic-pr",
   "version": "1.0.0",
   "description": "AI code reviewer for TypeScript projects with multi-persona consensus",
   "type": "module",
@@ -15,11 +15,11 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\""
   },
-  "author": "Longblack",
+  "author": "Dialectic PR Team",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/timenco/longblack-pr-review.git"
+    "url": "git+https://github.com/timenco/dialectic-pr.git"
   },
   "engines": {
     "node": ">=18.0.0"

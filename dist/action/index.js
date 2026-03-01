@@ -38042,22 +38042,22 @@ const logger = new Logger();
 //# sourceMappingURL=logger.js.map
 ;// CONCATENATED MODULE: ./dist/core/types.js
 /**
- * Core type definitions for Longblack PR Review
+ * Core type definitions for Dialectic PR
  */
 // ============================================================================
 // Error Types
 // ============================================================================
-class LongblackError extends Error {
+class DialecticError extends Error {
     code;
     details;
     constructor(message, code, details) {
         super(message);
         this.code = code;
         this.details = details;
-        this.name = "LongblackError";
+        this.name = "DialecticError";
     }
 }
-class APIError extends LongblackError {
+class APIError extends DialecticError {
     statusCode;
     constructor(statusCode, message, details) {
         super(message, "API_ERROR", details);
@@ -38065,13 +38065,13 @@ class APIError extends LongblackError {
         this.name = "APIError";
     }
 }
-class ConfigError extends LongblackError {
+class ConfigError extends DialecticError {
     constructor(message, details) {
         super(message, "CONFIG_ERROR", details);
         this.name = "ConfigError";
     }
 }
-class ValidationError extends LongblackError {
+class ValidationError extends DialecticError {
     constructor(message, details) {
         super(message, "VALIDATION_ERROR", details);
         this.name = "ValidationError";
@@ -38107,9 +38107,9 @@ class PrivacyGuard {
 ║  analysis. By continuing, you acknowledge this data transfer.     ║
 ║                                                                    ║
 ║  To exclude sensitive files, configure 'exclude_patterns' in      ║
-║  your .github/longblack-pr-review.json                             ║
+║  your .github/dialectic-pr.json                             ║
 ║                                                                    ║
-║  Docs: https://github.com/timenco/longblack-pr-review#privacy     ║
+║  Docs: https://github.com/timenco/dialectic-pr#privacy            ║
 ╚════════════════════════════════════════════════════════════════════╝
     `);
     }
@@ -49579,7 +49579,7 @@ class FrameworkDetector {
 
 /**
  * Configuration Loader
- * .github/longblack-pr-review.json 파일을 로드하고 검증
+ * .github/dialectic-pr.json 파일을 로드하고 검증
  */
 class ConfigLoader {
     defaultConfig = {
@@ -49606,7 +49606,7 @@ class ConfigLoader {
      * @param configPath 커스텀 설정 파일 경로 (선택적)
      */
     async load(repoPath, configPath) {
-        const configFilePath = configPath || (0,external_path_.join)(repoPath, ".github/longblack-pr-review.json");
+        const configFilePath = configPath || (0,external_path_.join)(repoPath, ".github/dialectic-pr.json");
         // 설정 파일이 없으면 기본 설정 사용
         if (!(0,external_fs_.existsSync)(configFilePath)) {
             logger.info("No config file found, using default configuration");
@@ -49714,7 +49714,7 @@ class ConfigLoader {
         }
     }
     /**
-     * Pick only valid LongblackConfig fields from user config
+     * Pick only valid DialecticConfig fields from user config
      */
     pickValidFields(userConfig) {
         const result = {};
@@ -50419,7 +50419,7 @@ class ProjectRulesLoader {
  */
 function formatReviewBody(result, analysis) {
     const lines = [];
-    lines.push("## 🤖 Longblack PR Review");
+    lines.push("## 🤖 Dialectic PR Review");
     lines.push("");
     lines.push(`**Framework**: ${analysis.context.framework.name} ${analysis.context.framework.version || ""}`);
     lines.push(`**Strategy**: ${result.metadata.strategy}`);
@@ -50466,7 +50466,7 @@ function formatReviewBody(result, analysis) {
     lines.push(`- Tokens Used: ${result.metadata.tokensUsed.toLocaleString()}`);
     lines.push(`- Duration: ${(result.metadata.reviewDuration / 1000).toFixed(2)}s`);
     lines.push("");
-    lines.push("*Powered by [Longblack PR Review](https://github.com/timenco/longblack-pr-review)*");
+    lines.push("*Powered by [Dialectic PR Review](https://github.com/timenco/dialectic-pr)*");
     return lines.join("\n");
 }
 /**
@@ -50476,7 +50476,7 @@ function formatReviewBody(result, analysis) {
  * Does NOT call process.exit() — callers are responsible for exit behavior.
  */
 async function runReview(options) {
-    logger.section("Longblack PR Review");
+    logger.section("Dialectic PR Review");
     // 1. Privacy Guard
     const privacyGuard = new PrivacyGuard();
     privacyGuard.displayDisclaimer();
@@ -50522,7 +50522,7 @@ async function runReview(options) {
     // Skip strategy — post warning and return early
     if (strategy.name === "skip") {
         logger.warn("⚠️ PR is too large for meaningful review");
-        const skipBody = `## 🤖 Longblack PR Review\n\n⚠️ **PR Too Large**: This PR is too large for meaningful AI review (${(analysis.metrics.diffSize / 1024).toFixed(1)} KB).\n\nPlease split this into smaller PRs for better review quality.`;
+        const skipBody = `## 🤖 Dialectic PR Review\n\n⚠️ **PR Too Large**: This PR is too large for meaningful AI review (${(analysis.metrics.diffSize / 1024).toFixed(1)} KB).\n\nPlease split this into smaller PRs for better review quality.`;
         let posted = false;
         if (!options.dryRun) {
             await githubAdapter.postComment(prInfo, skipBody);
@@ -50575,7 +50575,7 @@ async function runReview(options) {
         commentBody = formatReviewBody(result, analysis);
     }
     else {
-        commentBody = `## 🤖 Longblack PR Review\n\n✅ ${result.summary.overallAssessment}`;
+        commentBody = `## 🤖 Dialectic PR Review\n\n✅ ${result.summary.overallAssessment}`;
     }
     if (!options.dryRun) {
         await githubAdapter.postComment(prInfo, commentBody);

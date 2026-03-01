@@ -1,4 +1,4 @@
-name: "Longblack PR Review"
+name: "Dialectic PR Review"
 description: "AI code reviewer for TypeScript projects with multi-persona consensus"
 author: "timenco"
 
@@ -11,9 +11,9 @@ inputs:
     required: true
     default: "${{ github.token }}"
   config_path:
-    description: "Path to longblack-pr-review.json"
+    description: "Path to dialectic-pr.json"
     required: false
-    default: ".github/longblack-pr-review.json"
+    default: ".github/dialectic-pr.json"
   log_level:
     description: "Log level (debug|info|warn|error)"
     required: false
