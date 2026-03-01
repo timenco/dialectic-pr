@@ -27,34 +27,67 @@ You MUST output EXACTLY this structure:
 
 === STEP 1: REVIEW AGENT (HAWK) ANALYSIS ===
 
-As HAWK, perform a thorough analysis of the diff. For each potential issue found:
-- State the file, line, and issue type (bug/security/performance/maintainability)
-- Explain WHY it is a problem with concrete evidence from the diff
-- Assess confidence (high/medium) and production impact
-- List ALL concerns — do not self-filter at this stage
+As HAWK, list every potential issue using this EXACT numbered format:
+
+Issue 1 (bug/security/performance/maintainability): Description of the issue.
+  - File: path/to/file.ts, Line: 42
+  - Evidence: concrete code reference from the diff
+  - Impact: what could go wrong in production
+
+Issue 2 (type): ...
+
+List ALL concerns — do not self-filter at this stage.
 
 === STEP 2: DEV AGENT (OWL) CHALLENGE ===
 
-As OWL, challenge EVERY issue HAWK raised:
-- For each HAWK issue, explicitly AGREE or REJECT with reasoning
-- Apply false-positive pattern checks
-- Evaluate ROI: is the fix worth the effort?
-- Check: would this actually cause a production bug, or is it stylistic/theoretical?
-- Provide a verdict: APPROVE / REQUEST_CHANGES / COMMENT
+As OWL, challenge EVERY issue HAWK raised using this EXACT format:
+
+Issue 1 Challenge: Your counterargument with evidence...
+→ REJECT (reason: e.g., "stylistic preference, no production impact, ROI too low")
+OR
+→ AGREE (reason: e.g., "confirmed bug that could cause production failure")
+
+Issue 2 Challenge: ...
+→ REJECT (reason) / → AGREE (reason)
+
+ROI CHECK — for each issue, ask these 3 questions:
+1. Does this prevent a real bug? (not stylistic)
+2. Could this cause a production incident?
+3. Is the ROI of fixing this HIGH?
+→ If not ALL three are "Yes", REJECT the issue.
+
+Be SKEPTICAL — reject unless HIGH ROI and clearly a bug or security risk.
+SECURITY OVERRIDE: Security issues (injection, auth bypass, data leak) are ALWAYS kept regardless of ROI.
 
 === STEP 3: FINAL CONSENSUS ===
 
-Synthesize the debate into a final consensus:
-1. Executive summary of the review (2-3 sentences)
-2. Highlight what the PR does well (positive feedback)
-3. List only the AGREED issues (issues both HAWK and OWL accept)
-4. End with a JSON block in the schema provided
+You MUST use this EXACT structure for STEP 3:
+
+📋 Executive Summary
+2-3 sentences summarizing the PR and review outcome.
+
+🔴 Critical Issues
+(List critical/security/bug issues that survived the debate. If none: "✅ Critical 이슈 없음")
+
+🟡 Important Issues
+(List important/performance/maintainability issues that survived. If none: "✅ Important 이슈 없음")
+
+✅ 긍정적인 점
+- Good pattern or practice observed (2-3 items)
+
+📊 Final Verdict
+결론: LGTM ✅ / Changes Requested 🔴 / Needs Discussion 💬
+머지: 즉시 가능 / 수정 후 / 팀 논의 후
+우선순위: P0 (긴급) / P1 (중요) / P2 (일반)
+
+Then end with the JSON block in the schema provided.
 
 RULES:
-- QUALITY_OVER_QUANTITY: Only consensus issues survive to the final JSON
+- QUALITY_OVER_QUANTITY: Only consensus issues survive to the final output
 - Be specific: reference actual code, line numbers, variable names
 - Be constructive: explain WHY and suggest HOW to fix
 - Positive feedback is mandatory: acknowledge good patterns
+- FALSE POSITIVE PREVENTION: When in doubt, REJECT. Only high-confidence, high-ROI issues survive.
 `.trim();
 
 /**
@@ -311,34 +344,20 @@ DIFF:
 ${analysis.prioritizedDiff}
 \`\`\`
 
-STEP_3_JSON_SCHEMA (place this JSON block at the END of STEP 3):
+CONSENSUS_JSON (place this JSON block at the very END of STEP 3, after 📊 Final Verdict):
 \`\`\`json
 {
-  "issues": [
-    {
-      "file": "string",
-      "line": "number|undefined",
-      "type": "bug|security|performance|maintainability",
-      "confidence": "high|medium",
-      "title": "string",
-      "description": "string",
-      "suggestion": "string|undefined"
-    }
-  ],
-  "consensus": {
-    "totalReviewed": "number (files reviewed)",
-    "issuesRaised": "number (HAWK issues before filtering)",
-    "issuesFiltered": "number (issues rejected by OWL)",
-    "agreedIssues": "number (issues both agree on)",
-    "rejectedIssues": "number (issues OWL rejected)",
-    "fpRate": "string (e.g. '2/5 = 40%')",
-    "verdict": "APPROVE|REQUEST_CHANGES|COMMENT",
-    "mergeable": "boolean",
-    "priority": "critical|high|medium|low",
-    "overallAssessment": "string"
-  }
+  "consensus_completed": true,
+  "agreed_issues": ["short summary of each agreed issue as a string"],
+  "rejected_issues": [{"issue": "description", "reason": "why rejected"}],
+  "verdict": "LGTM|CHANGES_REQUESTED|NEEDS_DISCUSSION",
+  "false_positive_rate": 0.0
 }
 \`\`\`
+- verdict: "LGTM" if no critical issues remain, "CHANGES_REQUESTED" if critical issues exist, "NEEDS_DISCUSSION" if ambiguous
+- false_positive_rate: ratio of rejected issues to total HAWK issues (0.0 to 1.0)
+- agreed_issues: array of SHORT summary strings for issues that survived the debate
+- rejected_issues: array of objects with "issue" and "reason" for each rejected issue
 
 Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural language markdown, then end STEP 3 with the JSON block.
     `.trim();
@@ -370,7 +389,7 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
    */
   private parseReviewResponse(responseText: string): CodeReviewResponse {
     try {
-      // Find the LAST ```json ``` block (STEP 3 JSON)
+      // Find the LAST ```json ``` block (CONSENSUS_JSON)
       const jsonBlocks = [...responseText.matchAll(/```(?:json)?\s*\n([\s\S]*?)\n```/g)];
       let jsonText: string;
       let debateNarrative: string | undefined;
@@ -394,48 +413,39 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
       const cleanedJson = jsonText.trim();
       const parsed = JSON.parse(cleanedJson);
 
-      // Validate structure
-      if (!parsed.issues || !Array.isArray(parsed.issues)) {
-        logger.warn("⚠️ Invalid response format, no issues array found");
-        return {
-          issues: [],
-          consensus: {
-            totalReviewed: 0,
-            issuesRaised: 0,
-            issuesFiltered: 0,
-            overallAssessment: "Failed to parse review response",
-          },
-          debateNarrative,
-        };
-      }
+      // New format: consensus_completed / agreed_issues / rejected_issues / verdict / false_positive_rate
+      const agreedIssues: string[] = Array.isArray(parsed.agreed_issues) ? parsed.agreed_issues : [];
+      const rejectedIssues: Array<{ issue: string; reason: string }> = Array.isArray(parsed.rejected_issues) ? parsed.rejected_issues : [];
+      const verdict = (parsed.verdict as string) || "LGTM";
+      const fpRateNum = typeof parsed.false_positive_rate === "number" ? parsed.false_positive_rate : 0;
+      const fpRate = `${Math.round(fpRateNum * 100)}%`;
 
-      // Normalize issues
-      const issues: ReviewIssue[] = parsed.issues.map((issue: Record<string, unknown>) => ({
-        file: (issue.file as string) || "unknown",
-        line: issue.line as number | undefined,
-        type: (issue.type as ReviewIssue["type"]) || "maintainability",
-        confidence: (issue.confidence as ReviewIssue["confidence"]) || "medium",
-        title: (issue.title as string) || "Issue",
-        description: (issue.description as string) || "",
-        suggestion: issue.suggestion as string | undefined,
-      }));
-
-      // Normalize consensus (with extended fields)
-      const consensus = {
-        totalReviewed: parsed.consensus?.totalReviewed ?? 0,
-        issuesRaised: parsed.consensus?.issuesRaised ?? issues.length,
-        issuesFiltered: parsed.consensus?.issuesFiltered ?? 0,
-        overallAssessment: parsed.consensus?.overallAssessment ??
-          (issues.length > 0 ? "Issues found" : "No issues found"),
-        agreedIssues: parsed.consensus?.agreedIssues as number | undefined,
-        rejectedIssues: parsed.consensus?.rejectedIssues as number | undefined,
-        fpRate: parsed.consensus?.fpRate as string | undefined,
-        verdict: parsed.consensus?.verdict as string | undefined,
-        mergeable: parsed.consensus?.mergeable as boolean | undefined,
-        priority: parsed.consensus?.priority as string | undefined,
+      // Map verdict to consensus format
+      const verdictMap: Record<string, string> = {
+        LGTM: "APPROVE",
+        CHANGES_REQUESTED: "REQUEST_CHANGES",
+        NEEDS_DISCUSSION: "COMMENT",
       };
 
-      return { issues, consensus, debateNarrative };
+      const totalIssues = agreedIssues.length + rejectedIssues.length;
+
+      const consensus = {
+        totalReviewed: 0,
+        issuesRaised: totalIssues,
+        issuesFiltered: rejectedIssues.length,
+        overallAssessment: agreedIssues.length > 0
+          ? `Found ${agreedIssues.length} agreed issue(s) after consensus filtering.`
+          : "✅ No significant issues found. Code looks good.",
+        agreedIssues: agreedIssues.length,
+        rejectedIssues: rejectedIssues.length,
+        fpRate,
+        verdict: verdictMap[verdict] || verdict,
+        mergeable: verdict === "LGTM" || verdict === "NEEDS_DISCUSSION",
+        priority: verdict === "CHANGES_REQUESTED" ? "high" : verdict === "NEEDS_DISCUSSION" ? "medium" : "low",
+      };
+
+      // Issues array is empty — all issue detail lives in the debateNarrative markdown
+      return { issues: [], consensus, debateNarrative };
     } catch (error) {
       logger.error(`Failed to parse review response: ${safeError(error)}`);
 
@@ -458,30 +468,27 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
    * Generate review summary
    */
   private generateSummary(
-    issues: ReviewIssue[],
+    _issues: ReviewIssue[],
     analysis: PRAnalysis,
     consensus: CodeReviewResponse["consensus"]
   ): ReviewSummary {
-    const criticalIssues = issues.filter(
-      (i) => i.type === "security" || i.type === "bug"
-    ).length;
+    // totalIssues = agreed issues count (from consensus JSON)
+    const totalIssues = consensus.agreedIssues ?? 0;
 
     // Use consensus assessment if available, otherwise generate
     let overallAssessment = consensus.overallAssessment;
 
     if (!overallAssessment || overallAssessment === "Failed to parse review response") {
-      if (issues.length === 0) {
+      if (totalIssues === 0) {
         overallAssessment = "✅ No significant issues found. Code looks good.";
-      } else if (criticalIssues > 0) {
-        overallAssessment = `⚠️ Found ${criticalIssues} critical issue(s) that should be addressed before merging.`;
       } else {
-        overallAssessment = `Found ${issues.length} issue(s) to consider for improved code quality.`;
+        overallAssessment = `Found ${totalIssues} agreed issue(s) after consensus filtering.`;
       }
     }
 
     return {
-      totalIssues: issues.length,
-      criticalIssues,
+      totalIssues,
+      criticalIssues: 0, // detail lives in narrative markdown
       affectedAreas: analysis.context.affectedAreas,
       overallAssessment,
       verdict: consensus.verdict,
