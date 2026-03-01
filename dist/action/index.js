@@ -38147,20 +38147,6 @@ class PrivacyGuard {
             process.env.GITLAB_CI ||
             process.env.CIRCLECI);
     }
-    /**
-     * 필요한 환경변수가 설정되어 있는지 확인
-     */
-    validateEnvironment(requiredVars) {
-        const missing = [];
-        for (const varName of requiredVars) {
-            if (!process.env[varName]) {
-                missing.push(varName);
-            }
-        }
-        if (missing.length > 0) {
-            throw new ValidationError(`Required environment variables are missing: ${missing.join(", ")}`, { missingVars: missing });
-        }
-    }
 }
 //# sourceMappingURL=privacy-guard.js.map
 ;// CONCATENATED MODULE: ./node_modules/@isaacs/balanced-match/dist/esm/index.js
@@ -50480,7 +50466,6 @@ async function runReview(options) {
     // 1. Privacy Guard
     const privacyGuard = new PrivacyGuard();
     privacyGuard.displayDisclaimer();
-    privacyGuard.validateEnvironment(["ANTHROPIC_API_KEY", "GITHUB_TOKEN"]);
     // 2. Load config
     const configLoader = new ConfigLoader();
     const repoPath = process.cwd();
@@ -50605,10 +50590,6 @@ async function run() {
     try {
         const anthropicApiKey = core.getInput("anthropic_api_key", { required: true });
         const githubToken = core.getInput("github_token", { required: true });
-        // GitHub Actions maps `with:` inputs to INPUT_* env vars, but
-        // review-engine validates process.env directly. Bridge the gap.
-        process.env.ANTHROPIC_API_KEY = anthropicApiKey;
-        process.env.GITHUB_TOKEN = githubToken;
         const configPath = core.getInput("config_path") || undefined;
         const logLevel = (core.getInput("log_level") || "info");
         const dryRun = core.getInput("dry_run") === "true";

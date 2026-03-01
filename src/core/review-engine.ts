@@ -106,7 +106,6 @@ export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
   // 1. Privacy Guard
   const privacyGuard = new PrivacyGuard();
   privacyGuard.displayDisclaimer();
-  privacyGuard.validateEnvironment(["ANTHROPIC_API_KEY", "GITHUB_TOKEN"]);
 
   // 2. Load config
   const configLoader = new ConfigLoader();
