@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 import { DetectedFramework } from "../core/types.js";
-import { logger } from "../utils/logger.js";
+import { logger, safeError } from "../utils/logger.js";
 
 interface PackageJson {
   dependencies?: Record<string, string>;
@@ -73,7 +73,7 @@ export class FrameworkDetector {
       const content = await readFile(packageJsonPath, "utf-8");
       return JSON.parse(content);
     } catch (error) {
-      logger.error(`Failed to read package.json: ${error}`);
+      logger.error(`Failed to read package.json: ${safeError(error)}`);
       return {};
     }
   }

@@ -19,38 +19,22 @@ import { ConfigLoader } from "../utils/config-loader.js";
 import { ProjectRulesLoader } from "../false-positive/project-rules-loader.js";
 
 /**
- * Extract consensus data from summary, with fallback inference from issues
+ * Extract consensus verdict/fpRate for display in metrics
  */
 function extractConsensusData(result: ReviewResult): {
   verdict: string;
-  mergeable: string;
-  priority: string;
+  fpRate: string;
 } {
   let verdict = result.summary.verdict || "";
-  let mergeable = result.summary.mergeable !== undefined
-    ? (result.summary.mergeable ? "Yes" : "No")
-    : "";
-  let priority = result.summary.priority || "";
+  const fpRate = result.summary.fpRate || "—";
 
-  // Fallback inference if not provided by consensus
+  // Fallback inference if not provided
   if (!verdict) {
-    const hasCritical = result.issues.some(
-      (i) => i.type === "security" || i.type === "bug"
-    );
-    if (result.issues.length === 0) verdict = "APPROVE";
-    else if (hasCritical) verdict = "REQUEST_CHANGES";
+    if (result.summary.totalIssues === 0) verdict = "APPROVE";
     else verdict = "COMMENT";
   }
-  if (!mergeable) {
-    mergeable = verdict === "REQUEST_CHANGES" ? "No" : "Yes";
-  }
-  if (!priority) {
-    if (verdict === "REQUEST_CHANGES") priority = "high";
-    else if (result.issues.length > 0) priority = "medium";
-    else priority = "low";
-  }
 
-  return { verdict, mergeable, priority };
+  return { verdict, fpRate };
 }
 
 /**
@@ -104,35 +88,43 @@ function formatFallbackIssues(result: ReviewResult): string {
  */
 function formatReviewBody(result: ReviewResult, analysis: PRAnalysis): string {
   const lines: string[] = [];
-  const { verdict, mergeable, priority } = extractConsensusData(result);
+  const { verdict, fpRate } = extractConsensusData(result);
 
   // Header
   lines.push("## 🤖 Dialectic PR Review");
   lines.push("");
 
-  // Metrics table
-  lines.push("### 📊 Review Metrics");
+  // Metrics — bullet list
+  lines.push("### 📊 리뷰 메트릭");
   lines.push("");
-  lines.push("| Strategy | Files | Lines Changed | Affected Areas | Consensus | Flags |");
-  lines.push("|----------|-------|---------------|----------------|-----------|-------|");
-
-  const flagParts: string[] = [];
-  if (analysis.context.flags.criticalModule) flagParts.push("🔴 Critical");
-  if (analysis.context.flags.schemaChanged) flagParts.push("📐 Schema");
-  if (analysis.context.flags.testChanged) flagParts.push("🧪 Tests");
-  if (analysis.context.flags.configOnly) flagParts.push("⚙️ Config");
-  const flags = flagParts.length > 0 ? flagParts.join(", ") : "—";
+  lines.push(`- **전략**: ${result.metadata.strategy.toUpperCase()} PR`);
+  lines.push(`- **변경 파일**: ${result.metadata.filesReviewed}개`);
+  lines.push(`- **변경 라인**: +${analysis.metrics.addedLines}/-${analysis.metrics.deletedLines}`);
 
   const areas = result.summary.affectedAreas.length > 0
     ? result.summary.affectedAreas.join(", ")
     : "—";
+  lines.push(`- **영향 영역**: ${areas}`);
 
-  lines.push(
-    `| ${result.metadata.strategy} | ${result.metadata.filesReviewed} | +${analysis.metrics.addedLines} / -${analysis.metrics.deletedLines} | ${areas} | ${verdict} | ${flags} |`
-  );
+  // Consensus line with verdict emoji
+  const verdictEmoji = verdict === "APPROVE" ? "✅ LGTM" : verdict === "REQUEST_CHANGES" ? "🔴 Changes Requested" : "💬 Needs Discussion";
+  lines.push(`- **Consensus**: ${verdictEmoji} (FP Rate: ${fpRate})`);
+
+  // Flags
+  const flagParts: string[] = [];
+  if (analysis.context.flags.criticalModule) flagParts.push("🔴 크리티컬 모듈");
+  if (analysis.context.flags.schemaChanged) flagParts.push("📐 Schema");
+  if (analysis.context.flags.testChanged) flagParts.push("🧪 Tests");
+  if (analysis.context.flags.configOnly) flagParts.push("⚙️ Config");
+  if (flagParts.length > 0) {
+    lines.push(`- **플래그**: ${flagParts.join(", ")}`);
+  }
+
+  lines.push("");
+  lines.push("---");
   lines.push("");
 
-  // Debate narrative (STEP 1, 2, 3) or fallback
+  // Debate narrative (STEP 1, 2, 3 including Executive Summary, Critical, Important, etc.) or fallback
   if (result.debateNarrative) {
     lines.push(result.debateNarrative);
   } else {
@@ -143,31 +135,9 @@ function formatReviewBody(result: ReviewResult, analysis: PRAnalysis): string {
   lines.push("---");
   lines.push("");
 
-  // Final Verdict table
-  lines.push("### 📊 Final Verdict");
-  lines.push("");
-  lines.push("| Verdict | Mergeable | Priority |");
-  lines.push("|---------|-----------|----------|");
-  lines.push(`| ${verdict} | ${mergeable} | ${priority} |`);
-  lines.push("");
-
-  // Metadata in collapsible section
-  lines.push("<details>");
-  lines.push("<summary>📋 Review Metadata</summary>");
-  lines.push("");
-  lines.push(`- **Framework**: ${analysis.context.framework.name} ${analysis.context.framework.version || ""}`);
-  lines.push(`- **Tokens Used**: ${result.metadata.tokensUsed.toLocaleString()}`);
-  lines.push(`- **Duration**: ${(result.metadata.reviewDuration / 1000).toFixed(2)}s`);
-  lines.push(`- **Files Excluded**: ${result.metadata.filesExcluded}`);
-  if (result.summary.fpRate) {
-    lines.push(`- **FP Rate**: ${result.summary.fpRate}`);
-  }
-  lines.push("");
-  lines.push("</details>");
-  lines.push("");
-  lines.push(
-    "*Powered by [Dialectic PR Review](https://github.com/timenco/dialectic-pr)*"
-  );
+  // Footer
+  lines.push("*🪄 Generated by [Dialectic PR Review](https://github.com/timenco/dialectic-pr)*");
+  lines.push("*💡 Tip: `skip-ai-review` 라벨을 추가하면 자동 리뷰를 건너뜁니다*");
 
   return lines.join("\n");
 }
