@@ -130,6 +130,7 @@ export interface ReviewResult {
   issues: ReviewIssue[];
   summary: ReviewSummary;
   metadata: ReviewMetadata;
+  debateNarrative?: string;
 }
 
 export interface ReviewIssue {
@@ -147,6 +148,10 @@ export interface ReviewSummary {
   criticalIssues: number;
   affectedAreas: string[];
   overallAssessment: string;
+  verdict?: string;
+  mergeable?: boolean;
+  priority?: string;
+  fpRate?: string;
 }
 
 export interface ReviewMetadata {
@@ -233,7 +238,14 @@ export interface CodeReviewResponse {
     issuesRaised: number;
     issuesFiltered: number;
     overallAssessment: string;
+    agreedIssues?: number;
+    rejectedIssues?: number;
+    fpRate?: string;
+    verdict?: string;
+    mergeable?: boolean;
+    priority?: string;
   };
+  debateNarrative?: string;
 }
 
 export interface GitHubPRInfo {
