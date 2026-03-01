@@ -6,7 +6,5 @@
     "**/*.min.js",
     "**/dist/**",
     "**/node_modules/**"
-  ],
-  "false_positive_patterns": [],
-  "framework_specific": {}
+  ]
 }

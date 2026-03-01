@@ -38107,9 +38107,9 @@ class PrivacyGuard {
 ║  analysis. By continuing, you acknowledge this data transfer.     ║
 ║                                                                    ║
 ║  To exclude sensitive files, configure 'exclude_patterns' in      ║
-║  your .github/dialectic-pr.json                                   ║
+║  your .github/dialectic-pr.json                             ║
 ║                                                                    ║
-║  Docs: https://github.com/dialectic-pr/dialectic-pr#privacy       ║
+║  Docs: https://github.com/timenco/dialectic-pr#privacy            ║
 ╚════════════════════════════════════════════════════════════════════╝
     `);
     }
@@ -40966,33 +40966,6 @@ class StrategySelector {
         logger.info(`📊 Selected strategy: ${strategy.name} (${strategy.maxTokens} tokens)`);
         return strategy;
     }
-    /**
-     * 전략 설명 가져오기
-     */
-    getStrategyDescription(strategy) {
-        return `
-Strategy: ${strategy.name.toUpperCase()}
-Max Tokens: ${strategy.maxTokens}
-Context Budget: ${strategy.contextTokenBudget}
-Instructions: ${strategy.instructions}
-    `.trim();
-    }
-    /**
-     * 커스텀 전략 설정
-     */
-    setCustomStrategy(name, strategy) {
-        this.strategies[name] = {
-            ...this.strategies[name],
-            ...strategy,
-            name, // name은 변경 불가
-        };
-    }
-    /**
-     * 모든 전략 가져오기
-     */
-    getAllStrategies() {
-        return { ...this.strategies };
-    }
 }
 //# sourceMappingURL=strategy-selector.js.map
 ;// CONCATENATED MODULE: ./dist/core/consensus-engine.js
@@ -41169,8 +41142,6 @@ class ConsensusEngine {
         const response = await this.claudeAdapter.sendAdvancedMessage(userMessage, {
             maxTokens: strategy.maxTokens,
             systemMessages,
-            enableThinking: true,
-            thinkingBudget: 2000,
         });
         // 4. Parse response
         const parsed = this.parseReviewResponse(response.text);
@@ -45181,58 +45152,8 @@ class RetryHandler {
 
 
 /**
- * Default JSON Schema for code review output
- */
-const CODE_REVIEW_SCHEMA = {
-    name: "code_review",
-    strict: true,
-    schema: {
-        type: "object",
-        properties: {
-            issues: {
-                type: "array",
-                items: {
-                    type: "object",
-                    properties: {
-                        file: { type: "string" },
-                        line: { type: "number" },
-                        type: {
-                            type: "string",
-                            enum: ["bug", "security", "performance", "maintainability"],
-                        },
-                        confidence: {
-                            type: "string",
-                            enum: ["high", "medium"],
-                        },
-                        title: { type: "string" },
-                        description: { type: "string" },
-                        suggestion: { type: "string" },
-                    },
-                    required: ["file", "type", "confidence", "title", "description"],
-                },
-            },
-            consensus: {
-                type: "object",
-                properties: {
-                    totalReviewed: { type: "number" },
-                    issuesRaised: { type: "number" },
-                    issuesFiltered: { type: "number" },
-                    overallAssessment: { type: "string" },
-                },
-                required: [
-                    "totalReviewed",
-                    "issuesRaised",
-                    "issuesFiltered",
-                    "overallAssessment",
-                ],
-            },
-        },
-        required: ["issues", "consensus"],
-    },
-};
-/**
  * Claude API Adapter
- * Anthropic Claude API 클라이언트 with Prompt Caching, Extended Thinking, JSON Mode
+ * Anthropic Claude API 클라이언트 with Prompt Caching
  */
 class ClaudeAdapter {
     apiKey;
@@ -45240,21 +45161,6 @@ class ClaudeAdapter {
     client;
     retryHandler;
     defaultModel = "claude-sonnet-4-20250514";
-    // Claude API pricing (as of 2025)
-    pricing = {
-        "claude-sonnet-4-20250514": {
-            input: 0.003, // per 1K tokens
-            output: 0.015, // per 1K tokens
-            cacheWrite: 0.00375, // per 1K tokens (cache creation)
-            cacheRead: 0.0003, // per 1K tokens (cache hit)
-        },
-        "claude-3-5-sonnet-20241022": {
-            input: 0.003,
-            output: 0.015,
-            cacheWrite: 0.00375,
-            cacheRead: 0.0003,
-        },
-    };
     constructor(apiKey, model) {
         this.apiKey = apiKey;
         this.model = model;
@@ -45268,71 +45174,16 @@ class ClaudeAdapter {
         });
     }
     /**
-     * Claude API에 메시지 전송 (기본 버전)
-     * @param prompt 프롬프트
-     * @param options Claude 옵션
-     */
-    async sendMessage(prompt, options) {
-        const model = options.model || this.model || this.defaultModel;
-        logger.info(`🤖 Sending request to Claude (${model})...`);
-        logger.debug(`Prompt length: ${prompt.length} chars`);
-        logger.debug(`Max tokens: ${options.maxTokens}`);
-        return await this.retryHandler.execute(async () => {
-            try {
-                const startTime = Date.now();
-                const response = await this.client.messages.create({
-                    model,
-                    max_tokens: options.maxTokens,
-                    temperature: options.temperature ?? 0,
-                    messages: [
-                        {
-                            role: "user",
-                            content: prompt,
-                        },
-                    ],
-                });
-                const duration = Date.now() - startTime;
-                // 응답 텍스트 추출
-                const text = response.content
-                    .filter((block) => block.type === "text")
-                    .map((block) => block.text)
-                    .join("\n");
-                // 토큰 사용량 계산
-                const usage = {
-                    inputTokens: response.usage.input_tokens,
-                    outputTokens: response.usage.output_tokens,
-                    totalCost: this.calculateCost(model, response.usage.input_tokens, response.usage.output_tokens),
-                };
-                logger.success(`✅ Received response from Claude`);
-                logger.info(`📊 Tokens used: ${usage.inputTokens} in + ${usage.outputTokens} out`);
-                logger.info(`💰 Estimated cost: $${usage.totalCost.toFixed(4)}`);
-                logger.info(`⏱️  Duration: ${duration}ms`);
-                return {
-                    text,
-                    usage,
-                };
-            }
-            catch (error) {
-                if (error instanceof sdk.APIError) {
-                    logger.error(`Claude API Error: ${error.status} - ${error.message}`);
-                    throw new APIError(error.status ?? 500, error.message, error);
-                }
-                throw error;
-            }
-        }, [429, 500, 502, 503, 504]); // 재시도 가능한 HTTP 상태 코드
-    }
-    /**
-     * 고급 Claude API 호출 (Prompt Caching + Extended Thinking + JSON Mode)
+     * Claude API 호출 (Prompt Caching + JSON Mode)
      * @param userMessage 사용자 메시지
      * @param options 고급 옵션
      */
     async sendAdvancedMessage(userMessage, options) {
         const model = options.model || this.model || this.defaultModel;
-        logger.info(`🤖 Sending advanced request to Claude (${model})...`);
+        logger.info(`🤖 Sending request to Claude (${model})...`);
         logger.debug(`User message length: ${userMessage.length} chars`);
         logger.debug(`Max tokens: ${options.maxTokens}`);
         logger.debug(`Caching enabled: ${options.systemMessages && options.systemMessages.length > 0}`);
-        logger.debug(`Extended thinking: ${options.enableThinking || false}`);
         return await this.retryHandler.execute(async () => {
             try {
                 const startTime = Date.now();
@@ -45356,25 +45207,13 @@ class ClaudeAdapter {
                         ...(msg.cache_control && { cache_control: msg.cache_control }),
                     }));
                 }
-                // Note: Extended thinking and JSON schema mode would be configured here
-                // when the Anthropic SDK fully supports these features.
-                // For now, we rely on prompt engineering for JSON output.
                 const response = await this.client.messages.create(requestParams);
                 const duration = Date.now() - startTime;
                 // 응답 텍스트 추출
-                let text = "";
-                let thinking = "";
-                for (const block of response.content) {
-                    if (block.type === "text") {
-                        text += block.text;
-                    }
-                    // Handle thinking blocks if extended thinking is enabled
-                    // Note: "thinking" type is available in newer Anthropic SDK versions
-                    const blockType = block.type;
-                    if (blockType === "thinking") {
-                        thinking += block.thinking;
-                    }
-                }
+                const text = response.content
+                    .filter((block) => block.type === "text")
+                    .map((block) => block.text)
+                    .join("\n");
                 // 토큰 사용량 계산 (캐시 포함)
                 const usageData = response.usage;
                 const usage = {
@@ -45382,7 +45221,7 @@ class ClaudeAdapter {
                     outputTokens: usageData.output_tokens,
                     cacheCreationTokens: usageData.cache_creation_input_tokens || 0,
                     cacheReadTokens: usageData.cache_read_input_tokens || 0,
-                    totalCost: this.calculateAdvancedCost(model, usageData),
+                    totalCost: 0,
                 };
                 logger.success(`✅ Received response from Claude`);
                 logger.info(`📊 Tokens: ${usage.inputTokens} in + ${usage.outputTokens} out`);
@@ -45392,12 +45231,10 @@ class ClaudeAdapter {
                 if (usage.cacheCreationTokens && usage.cacheCreationTokens > 0) {
                     logger.info(`💾 Cache created: ${usage.cacheCreationTokens} tokens cached`);
                 }
-                logger.info(`💰 Estimated cost: $${usage.totalCost.toFixed(4)}`);
                 logger.info(`⏱️  Duration: ${duration}ms`);
                 return {
                     text,
                     usage,
-                    ...(thinking && { thinking }),
                 };
             }
             catch (error) {
@@ -45410,113 +45247,10 @@ class ClaudeAdapter {
         }, [429, 500, 502, 503, 504]);
     }
     /**
-     * 기본 비용 계산
-     */
-    calculateCost(model, inputTokens, outputTokens) {
-        const pricing = this.pricing[model] ||
-            this.pricing[this.defaultModel];
-        const inputCost = (inputTokens / 1000) * pricing.input;
-        const outputCost = (outputTokens / 1000) * pricing.output;
-        return inputCost + outputCost;
-    }
-    /**
-     * 고급 비용 계산 (캐싱 포함)
-     */
-    calculateAdvancedCost(model, usage) {
-        const pricing = this.pricing[model] ||
-            this.pricing[this.defaultModel];
-        // Regular input tokens (excluding cached)
-        const regularInputTokens = usage.input_tokens -
-            (usage.cache_creation_input_tokens || 0) -
-            (usage.cache_read_input_tokens || 0);
-        const inputCost = (regularInputTokens / 1000) * pricing.input;
-        const outputCost = (usage.output_tokens / 1000) * pricing.output;
-        const cacheWriteCost = ((usage.cache_creation_input_tokens || 0) / 1000) * pricing.cacheWrite;
-        const cacheReadCost = ((usage.cache_read_input_tokens || 0) / 1000) * pricing.cacheRead;
-        return inputCost + outputCost + cacheWriteCost + cacheReadCost;
-    }
-    /**
-     * 스트리밍 응답
-     */
-    async sendMessageStream(prompt, options, onChunk) {
-        const model = options.model || this.model || this.defaultModel;
-        logger.info(`🤖 Sending streaming request to Claude (${model})...`);
-        const stream = await this.client.messages.create({
-            model,
-            max_tokens: options.maxTokens,
-            temperature: options.temperature ?? 0,
-            messages: [
-                {
-                    role: "user",
-                    content: prompt,
-                },
-            ],
-            stream: true,
-        });
-        let fullText = "";
-        let inputTokens = 0;
-        let outputTokens = 0;
-        for await (const event of stream) {
-            if (event.type === "content_block_delta") {
-                if (event.delta.type === "text_delta") {
-                    const chunk = event.delta.text;
-                    fullText += chunk;
-                    onChunk(chunk);
-                }
-            }
-            else if (event.type === "message_start") {
-                inputTokens = event.message.usage.input_tokens;
-            }
-            else if (event.type === "message_delta") {
-                outputTokens = event.usage.output_tokens;
-            }
-        }
-        const usage = {
-            inputTokens,
-            outputTokens,
-            totalCost: this.calculateCost(model, inputTokens, outputTokens),
-        };
-        logger.success(`✅ Streaming completed`);
-        logger.info(`📊 Tokens: ${inputTokens} in + ${outputTokens} out`);
-        logger.info(`💰 Cost: $${usage.totalCost.toFixed(4)}`);
-        return {
-            text: fullText,
-            usage,
-        };
-    }
-    /**
      * 현재 사용 중인 모델 확인
      */
     getModel() {
         return this.model || this.defaultModel;
-    }
-    /**
-     * API 키 유효성 확인 (간단한 테스트 요청)
-     */
-    async validateApiKey() {
-        try {
-            await this.client.messages.create({
-                model: this.defaultModel,
-                max_tokens: 10,
-                messages: [
-                    {
-                        role: "user",
-                        content: "test",
-                    },
-                ],
-            });
-            return true;
-        }
-        catch (error) {
-            logger.error(`API key validation failed: ${error}`);
-            return false;
-        }
-    }
-    /**
-     * 기본 코드 리뷰 JSON 스키마 가져오기
-     */
-    static getCodeReviewSchema() {
-        return CODE_REVIEW_SCHEMA;
     }
 }
 //# sourceMappingURL=claude-api.js.map
@@ -49665,48 +49399,6 @@ class GitHubAdapter {
             throw new APIError(error.status ?? 500, `Failed to fetch PR info: ${error}`, error);
         }
     }
-    /**
-     * 저장소 파일 내용 가져오기
-     * @param owner 저장소 소유자
-     * @param repo 저장소 이름
-     * @param path 파일 경로
-     * @param ref 브랜치 또는 커밋 SHA
-     */
-    async getFileContent(owner, repo, path, ref) {
-        try {
-            const { data } = await this.octokit.repos.getContent({
-                owner,
-                repo,
-                path,
-                ref,
-            });
-            if ("content" in data && typeof data.content === "string") {
-                return Buffer.from(data.content, "base64").toString("utf-8");
-            }
-            throw new Error("File content not found");
-        }
-        catch (error) {
-            logger.error(`Failed to get file content for ${path}: ${error}`);
-            throw new APIError(error.status ?? 500, `Failed to get file content: ${error}`, error);
-        }
-    }
-    /**
-     * Rate limit 상태 확인
-     */
-    async checkRateLimit() {
-        try {
-            const { data } = await this.octokit.rateLimit.get();
-            return {
-                limit: data.rate.limit,
-                remaining: data.rate.remaining,
-                reset: new Date(data.rate.reset * 1000),
-            };
-        }
-        catch (error) {
-            logger.error(`Failed to check rate limit: ${error}`);
-            throw new APIError(error.status ?? 500, `Failed to check rate limit: ${error}`, error);
-        }
-    }
 }
 //# sourceMappingURL=github-api.js.map
 ;// CONCATENATED MODULE: external "fs/promises"
@@ -49893,17 +49585,21 @@ class ConfigLoader {
     defaultConfig = {
         model: "claude-sonnet-4-20250514",
         language: undefined,
-        context_files: [],
-        false_positive_files: [],
         exclude_patterns: [],
         strategies: {
             small: { maxTokens: 16000 },
             medium: { maxTokens: 12000 },
             large: { maxTokens: 8000 },
         },
-        false_positive_patterns: [],
-        framework_specific: {},
     };
+    /** Deprecated field names that should trigger a warning */
+    static DEPRECATED_FIELDS = [
+        "context_files",
+        "false_positive_files",
+        "false_positive_patterns",
+        "framework_specific",
+        "conventions",
+    ];
     /**
      * 설정 파일 로드
      * @param repoPath 저장소 루트 경로
@@ -49919,19 +49615,15 @@ class ConfigLoader {
         try {
             const content = await (0,promises_namespaceObject.readFile)(configFilePath, "utf-8");
             const userConfig = JSON.parse(content);
+            // Deprecation warnings
+            this.warnDeprecatedFields(userConfig);
             // 기본 설정과 병합
             const mergedConfig = {
                 ...this.defaultConfig,
-                ...userConfig,
-                context_files: userConfig.context_files || [],
-                false_positive_files: userConfig.false_positive_files || [],
+                ...this.pickValidFields(userConfig),
                 strategies: {
                     ...this.defaultConfig.strategies,
                     ...userConfig.strategies,
-                },
-                framework_specific: {
-                    ...this.defaultConfig.framework_specific,
-                    ...userConfig.framework_specific,
                 },
             };
             this.validateConfig(mergedConfig);
@@ -49943,6 +49635,57 @@ class ConfigLoader {
                 throw error;
             }
             throw new ConfigError(`Failed to load config from ${configFilePath}: ${error}`, { path: configFilePath, error });
+        }
+    }
+    /**
+     * .github/review-guardrails.json 자동 감지 및 로드
+     */
+    async loadGuardrails(repoPath) {
+        const guardrailsPath = (0,external_path_.join)(repoPath, ".github/review-guardrails.json");
+        if (!(0,external_fs_.existsSync)(guardrailsPath)) {
+            return {};
+        }
+        try {
+            const content = await (0,promises_namespaceObject.readFile)(guardrailsPath, "utf-8");
+            const parsed = JSON.parse(content);
+            // 배열 형식 [...] → { patterns: [...] }
+            if (Array.isArray(parsed)) {
+                const validPatterns = parsed.filter((p) => this.isValidFPPattern(p));
+                logger.info(`Loaded ${validPatterns.length} guardrail patterns from ${guardrailsPath}`);
+                return { patterns: validPatterns };
+            }
+            // 객체 형식 { patterns?: [...], disabled_patterns?: [...] }
+            const result = {};
+            if (Array.isArray(parsed.patterns)) {
+                result.patterns = parsed.patterns.filter((p) => this.isValidFPPattern(p));
+            }
+            if (Array.isArray(parsed.disabled_patterns)) {
+                result.disabled_patterns = parsed.disabled_patterns;
+            }
+            logger.info(`Loaded guardrails from ${guardrailsPath}: ${result.patterns?.length ?? 0} patterns, ${result.disabled_patterns?.length ?? 0} disabled`);
+            return result;
+        }
+        catch (error) {
+            logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${error}`);
+            return {};
+        }
+    }
+    /**
+     * CLAUDE.md 자동 감지 및 로드
+     */
+    async loadClaudeMd(repoPath) {
+        const claudeMdPath = (0,external_path_.join)(repoPath, "CLAUDE.md");
+        if (!(0,external_fs_.existsSync)(claudeMdPath)) {
+            return "";
+        }
+        try {
+            const content = await (0,promises_namespaceObject.readFile)(claudeMdPath, "utf-8");
+            logger.info(`Loaded project context from CLAUDE.md`);
+            return content;
+        }
+        catch (error) {
+            logger.warn(`Failed to load CLAUDE.md: ${error}`);
+            return "";
         }
     }
     /**
@@ -49969,79 +49712,31 @@ class ConfigLoader {
         if (!Array.isArray(config.exclude_patterns)) {
             throw new ConfigError("exclude_patterns must be an array");
         }
-        // False positive patterns 검증
-        if (!Array.isArray(config.false_positive_patterns)) {
-            throw new ConfigError("false_positive_patterns must be an array");
-        }
-        for (const pattern of config.false_positive_patterns) {
-            if (!pattern.id || !pattern.category || !pattern.explanation) {
-                throw new ConfigError("Each false positive pattern must have id, category, and explanation");
-            }
-        }
     }
     /**
-     * 프로젝트 컨벤션 파일 로드
-     * @param repoPath 저장소 루트 경로
-     * @param conventionPaths 컨벤션 파일 경로 배열
+     * Pick only valid DialecticConfig fields from user config
      */
-    async loadConventions(repoPath, conventionPaths) {
-        const conventions = [];
-        for (const conventionPath of conventionPaths) {
-            const fullPath = (0,external_path_.join)(repoPath, conventionPath);
-            if (!(0,external_fs_.existsSync)(fullPath)) {
-                logger.warn(`Convention file not found: ${conventionPath}`);
-                continue;
-            }
-            try {
-                const content = await (0,promises_namespaceObject.readFile)(fullPath, "utf-8");
-                conventions.push(`\n## From ${conventionPath}\n\n${content}`);
-                logger.debug(`Loaded convention from ${conventionPath}`);
-            }
-            catch (error) {
-                logger.warn(`Failed to load convention from ${conventionPath}: ${error}`);
-            }
+    pickValidFields(userConfig) {
+        const result = {};
+        if (typeof userConfig.model === "string")
+            result.model = userConfig.model;
+        if (typeof userConfig.language === "string")
+            result.language = userConfig.language;
+        if (Array.isArray(userConfig.exclude_patterns)) {
+            result.exclude_patterns = userConfig.exclude_patterns;
         }
-        return conventions.join("\n\n---\n\n");
+        return result;
     }
     /**
-     * 외부 FP 패턴 파일 로드
-     * @param repoPath 저장소 루트 경로
-     * @param filePaths FP 패턴 파일 경로 배열 (저장소 루트 기준 상대 경로)
+     * Warn about deprecated config fields
      */
-    async loadFalsePositiveFiles(repoPath, filePaths) {
-        const patterns = [];
-        for (const filePath of filePaths) {
-            const fullPath = (0,external_path_.join)(repoPath, filePath);
-            if (!(0,external_fs_.existsSync)(fullPath)) {
-                logger.warn(`False positive file not found: ${filePath}`);
-                continue;
-            }
-            try {
-                const content = await (0,promises_namespaceObject.readFile)(fullPath, "utf-8");
-                const parsed = JSON.parse(content);
-                // 배열 형식 [...] 또는 객체 형식 { patterns: [...] } 모두 지원
-                const rawPatterns = Array.isArray(parsed)
-                    ? parsed
-                    : parsed.patterns;
-                if (!Array.isArray(rawPatterns)) {
-                    logger.warn(`Invalid format in ${filePath}: expected array or { patterns: [...] }`);
-                    continue;
-                }
-                for (const raw of rawPatterns) {
-                    if (this.isValidFPPattern(raw)) {
-                        patterns.push(raw);
-                    }
-                    else {
-                        logger.warn(`Skipping invalid pattern in ${filePath}: missing required fields (id, category, explanation, falsePositiveIndicators)`);
-                    }
-                }
-                logger.info(`Loaded ${rawPatterns.length} FP patterns from ${filePath}`);
-            }
-            catch (error) {
-                logger.warn(`Failed to load FP file ${filePath}: ${error}`);
+    warnDeprecatedFields(userConfig) {
+        for (const field of ConfigLoader.DEPRECATED_FIELDS) {
+            if (field in userConfig) {
+                logger.warn(`⚠️  Config field "${field}" is deprecated and will be ignored. ` +
+                    `Use .github/review-guardrails.json for FP patterns or CLAUDE.md for project context.`);
             }
         }
-        return patterns;
     }
     /**
      * FP 패턴 유효성 검증
@@ -50673,188 +50368,36 @@ class FrameworkRegistry {
 
 
 
-
-
-
 /**
  * Project Rules Loader
- * 프로젝트별 False Positive 규칙과 컨벤션을 로드합니다.
+ * 빌트인 + 프레임워크별 FP 패턴을 조합하고, disabled 패턴을 필터링합니다.
+ * 순수 함수 — 파일 I/O 없음.
  */
 class ProjectRulesLoader {
     /**
-     * 프로젝트 규칙 로드
-     * @param repoPath 저장소 루트 경로
+     * FP 패턴 조합
      * @param frameworkName 감지된 프레임워크 이름
+     * @param disabledPatterns 비활성화할 패턴 ID 목록
      */
-    async load(repoPath, frameworkName) {
+    load(frameworkName, disabledPatterns = []) {
         logger.info("📜 Loading project rules...");
-        // 1. Load project config if exists
-        const config = await this.loadProjectConfig(repoPath);
-        // 2. Get builtin patterns (excluding disabled ones)
-        let patterns = this.getEnabledBuiltinPatterns(config);
-        // 3. Add framework-specific patterns
-        patterns = this.addFrameworkPatterns(patterns, frameworkName, config);
-        // 4. Add project-specific custom patterns
-        if (config?.false_positive_patterns) {
-            patterns = [...patterns, ...config.false_positive_patterns];
-            logger.debug(`Added ${config.false_positive_patterns.length} custom patterns from config`);
-        }
-        // 5. Load conventions
-        const conventions = await this.loadConventions(repoPath, config);
-        // 6. Get exclude patterns
-        const excludePatterns = config?.exclude_patterns || [];
-        const rules = {
-            patterns,
-            conventions,
-            excludePatterns,
-            overrides: config?.framework_specific,
-        };
-        logger.success(`✅ Loaded ${patterns.length} FP patterns, ${excludePatterns.length} exclude patterns`);
-        return rules;
-    }
-    /**
-     * Load project configuration from dialectic-pr.json
-     */
-    async loadProjectConfig(repoPath) {
-        const configPaths = [
-            (0,external_path_.join)(repoPath, ".github/dialectic-pr.json"),
-            (0,external_path_.join)(repoPath, "dialectic-pr.json"),
-            (0,external_path_.join)(repoPath, ".dialectic-pr.json"),
-        ];
-        for (const configPath of configPaths) {
-            if ((0,external_fs_.existsSync)(configPath)) {
-                try {
-                    const content = await (0,promises_namespaceObject.readFile)(configPath, "utf-8");
-                    const config = JSON.parse(content);
-                    logger.debug(`Loaded config from ${configPath}`);
-                    return config;
-                }
-                catch (error) {
-                    logger.warn(`Failed to parse config from ${configPath}: ${error}`);
-                }
-            }
-        }
-        logger.debug("No project config found, using defaults");
-        return null;
-    }
-    /**
-     * Get enabled builtin patterns (filter out disabled ones)
-     */
-    getEnabledBuiltinPatterns(config) {
-        const disabledIds = config?.disabled_builtin_patterns || [];
-        if (disabledIds.length > 0) {
-            logger.debug(`Disabling ${disabledIds.length} builtin patterns`);
-        }
-        return BUILTIN_PATTERNS.filter((p) => !disabledIds.includes(p.id));
-    }
-    /**
-     * Add framework-specific patterns
-     */
-    addFrameworkPatterns(patterns, frameworkName, config) {
-        // Get framework from registry
+        // 1. Start with builtin patterns
+        let patterns = [...BUILTIN_PATTERNS];
+        // 2. Add framework-specific patterns
         const framework = FrameworkRegistry.get(frameworkName);
         if (framework) {
             const frameworkPatterns = framework.getFalsePositivePatterns();
             patterns = [...patterns, ...frameworkPatterns];
             logger.debug(`Added ${frameworkPatterns.length} patterns for ${frameworkName}`);
         }
-        // Add framework-specific patterns from config
-        const frameworkConfig = config?.framework_specific?.[frameworkName];
-        if (frameworkConfig) {
-            // Filter out framework-specific disabled patterns
-            if (frameworkConfig.disabled_builtin_patterns) {
-                const disabledIds = frameworkConfig.disabled_builtin_patterns;
-                patterns = patterns.filter((p) => !disabledIds.includes(p.id));
-                logger.debug(`Disabled ${disabledIds.length} patterns for ${frameworkName}`);
-            }
-            // Add framework-specific custom patterns
-            if (frameworkConfig.custom_patterns) {
-                patterns = [...patterns, ...frameworkConfig.custom_patterns];
-                logger.debug(`Added ${frameworkConfig.custom_patterns.length} custom patterns for ${frameworkName}`);
-            }
+        // 3. Filter out disabled patterns
+        if (disabledPatterns.length > 0) {
+            const disabledSet = new Set(disabledPatterns);
+            patterns = patterns.filter((p) => !disabledSet.has(p.id));
+            logger.debug(`Disabled ${disabledPatterns.length} patterns`);
         }
+        logger.success(`✅ Loaded ${patterns.length} FP patterns`);
         return patterns;
-    }
-    /**
-     * Load project conventions from various sources
-     */
-    async loadConventions(repoPath, config) {
-        const conventions = [];
-        // Common convention file paths
-        const defaultPaths = [
-            "CLAUDE.md",
-            "CONVENTIONS.md",
-            "CONTRIBUTING.md",
-            "docs/conventions.md",
-            "principles/",
-        ];
-        // Paths from config
-        const configPaths = config?.conventions?.paths || [];
-        const allPaths = [...new Set([...defaultPaths, ...configPaths])];
-        for (const relativePath of allPaths) {
-            const fullPath = (0,external_path_.join)(repoPath, relativePath);
-            if (!(0,external_fs_.existsSync)(fullPath)) {
-                continue;
-            }
-            try {
-                // Check if it's a directory
-                const content = await this.loadConventionFile(fullPath);
-                if (content) {
-                    conventions.push(content);
-                    logger.debug(`Loaded conventions from ${relativePath}`);
-                }
-            }
-            catch (error) {
-                logger.debug(`Could not load conventions from ${relativePath}: ${error}`);
-            }
-        }
-        if (conventions.length === 0) {
-            logger.debug("No project conventions found");
-            return "";
-        }
-        return conventions.join("\n\n---\n\n");
-    }
-    /**
-     * Load a single convention file or directory
-     */
-    async loadConventionFile(path) {
-        try {
-            const content = await (0,promises_namespaceObject.readFile)(path, "utf-8");
-            return content;
-        }
-        catch {
-            // Might be a directory
-            return null;
-        }
-    }
-    /**
-     * Merge multiple project rules
-     */
-    static mergeRules(...rules) {
-        const mergedPatterns = [];
-        const seenIds = new Set();
-        const conventions = [];
-        const excludePatterns = [];
-        for (const rule of rules) {
-            // Merge patterns (deduplicate by ID)
-            for (const pattern of rule.patterns) {
-                if (!seenIds.has(pattern.id)) {
-                    seenIds.add(pattern.id);
-                    mergedPatterns.push(pattern);
-                }
-            }
-            // Merge conventions
-            if (rule.conventions) {
-                conventions.push(rule.conventions);
-            }
-            // Merge exclude patterns
-            excludePatterns.push(...rule.excludePatterns);
-        }
-        return {
-            patterns: mergedPatterns,
-            conventions: conventions.join("\n\n"),
-            excludePatterns: [...new Set(excludePatterns)],
-        };
     }
 }
 //# sourceMappingURL=project-rules-loader.js.map
@@ -50923,7 +50466,7 @@ function formatReviewBody(result, analysis) {
     lines.push(`- Tokens Used: ${result.metadata.tokensUsed.toLocaleString()}`);
     lines.push(`- Duration: ${(result.metadata.reviewDuration / 1000).toFixed(2)}s`);
     lines.push("");
-    lines.push("*Powered by [Dialectic PR](https://github.com/timenco/dialectic-pr)*");
+    lines.push("*Powered by [Dialectic PR Review](https://github.com/timenco/dialectic-pr)*");
     return lines.join("\n");
 }
 /**
@@ -51005,32 +50548,18 @@ async function runReview(options) {
             posted,
         };
     }
-    // 11. Load conventions (conventions.paths + context_files merged)
-    let contextPaths = [];
-    if (config.conventions?.paths) {
-        contextPaths.push(...config.conventions.paths);
-    }
-    if (config.context_files) {
-        contextPaths.push(...config.context_files);
-    }
-    const conventions = contextPaths.length > 0
-        ? await configLoader.loadConventions(repoPath, contextPaths)
-        : "";
-    // 11b. ProjectRulesLoader로 모든 FP 패턴 통합 (빌트인 + 프레임워크별 + 인라인)
+    // 11. CLAUDE.md 자동 감지
+    const conventions = await configLoader.loadClaudeMd(repoPath);
+    // 11b. guardrails.json 자동 감지
+    const guardrails = await configLoader.loadGuardrails(repoPath);
+    // 11c. FP 패턴 조합 (builtin + framework - disabled + project)
     const rulesLoader = new ProjectRulesLoader();
-    const projectRules = await rulesLoader.load(repoPath, analysis.context.framework.name);
-    // 11c. 외부 FP 파일 로드 및 머지
-    if (config.false_positive_files?.length) {
-        const extPatterns = await configLoader.loadFalsePositiveFiles(repoPath, config.false_positive_files);
-        projectRules.patterns.push(...extPatterns);
+    const basePatterns = rulesLoader.load(analysis.context.framework.name, guardrails.disabled_patterns || []);
+    const allPatternsMap = new Map(basePatterns.map(p => [p.id, p]));
+    for (const p of guardrails.patterns || []) {
+        allPatternsMap.set(p.id, p); // 프로젝트 패턴이 빌트인 override
     }
-    // 인라인 FP 패턴 추가 (config.false_positive_patterns)
-    if (config.false_positive_patterns?.length) {
-        projectRules.patterns.push(...config.false_positive_patterns);
-    }
-    // 중복 제거 (ID 기준, 후순위 우선)
-    const patternMap = new Map(projectRules.patterns.map(p => [p.id, p]));
-    const allPatterns = Array.from(patternMap.values());
+    const allPatterns = Array.from(allPatternsMap.values());
     // 12. Consensus Engine — pass language
     const consensusEngine = new ConsensusEngine(claudeAdapter, conventions, config.language);
     const result = await consensusEngine.generateReview(analysis, strategy, allPatterns);

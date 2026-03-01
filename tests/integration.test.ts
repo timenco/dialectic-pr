@@ -174,7 +174,6 @@ describe('Dialectic PR Integration Tests', () => {
       expect(config.model).toBeDefined();
       expect(config.exclude_patterns).toBeInstanceOf(Array);
       expect(config.strategies).toBeDefined();
-      expect(config.false_positive_patterns).toBeInstanceOf(Array);
     });
 
     it('should return default config when file does not exist', async () => {
@@ -259,7 +258,6 @@ describe('Dialectic PR Integration Tests', () => {
       expect(config).toHaveProperty('model');
       expect(config).toHaveProperty('exclude_patterns');
       expect(config).toHaveProperty('strategies');
-      expect(config).toHaveProperty('false_positive_patterns');
     });
   });
 });
