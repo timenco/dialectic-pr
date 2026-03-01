@@ -78,25 +78,6 @@ export class PrivacyGuard {
     );
   }
 
-  /**
-   * 필요한 환경변수가 설정되어 있는지 확인
-   */
-  validateEnvironment(requiredVars: string[]): void {
-    const missing: string[] = [];
-
-    for (const varName of requiredVars) {
-      if (!process.env[varName]) {
-        missing.push(varName);
-      }
-    }
-
-    if (missing.length > 0) {
-      throw new ValidationError(
-        `Required environment variables are missing: ${missing.join(", ")}`,
-        { missingVars: missing }
-      );
-    }
-  }
 }
 
 
