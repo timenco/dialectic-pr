@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 import { ConfigError, DialecticConfig, FalsePositivePattern, GuardrailsFile } from "../core/types.js";
-import { logger } from "./logger.js";
+import { logger, safeError } from "./logger.js";
 
 /**
  * Configuration Loader
@@ -73,7 +73,7 @@ export class ConfigLoader {
       }
 
       throw new ConfigError(
-        `Failed to load config from ${configFilePath}: ${error}`,
+        `Failed to load config from ${configFilePath}: ${safeError(error)}`,
         { path: configFilePath, error }
       );
     }
@@ -118,7 +118,7 @@ export class ConfigLoader {
       );
       return result;
     } catch (error) {
-      logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${error}`);
+      logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${safeError(error)}`);
       return {};
     }
   }
@@ -138,7 +138,7 @@ export class ConfigLoader {
       logger.info(`Loaded project context from CLAUDE.md`);
       return content;
     } catch (error) {
-      logger.warn(`Failed to load CLAUDE.md: ${error}`);
+      logger.warn(`Failed to load CLAUDE.md: ${safeError(error)}`);
       return "";
     }
   }

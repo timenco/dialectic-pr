@@ -38039,6 +38039,17 @@ class Logger {
 }
 // Singleton instance
 const logger = new Logger();
+/**
+ * Extract only the safe error message from an unknown error.
+ * Prevents leaking internal state, headers, or credentials
+ * that may be embedded in the full error object.
+ */
+function safeError(error) {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return "Unknown error";
+}
 //# sourceMappingURL=logger.js.map
 ;// CONCATENATED MODULE: ./dist/core/types.js
 /**
@@ -41338,8 +41349,7 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
             return { issues, consensus, debateNarrative };
         }
         catch (error) {
-            logger.error(`Failed to parse review response: ${error}`);
-            logger.debug(`Response text: ${responseText.substring(0, 500)}`);
+            logger.error(`Failed to parse review response: ${safeError(error)}`);
             // Even if JSON parsing fails, try to salvage the narrative
             const hasStepMarkers = responseText.includes("STEP 1") || responseText.includes("STEP 2");
             return {
@@ -49305,8 +49315,8 @@ class GitHubAdapter {
             return data;
         }
         catch (error) {
-            logger.error(`Failed to fetch PR diff: ${error}`);
-            throw new APIError(error.status ?? 500, `Failed to fetch PR diff: ${error}`, error);
+            logger.error(`Failed to fetch PR diff: ${safeError(error)}`);
+            throw new APIError(error.status ?? 500, `Failed to fetch PR diff: ${safeError(error)}`);
         }
     }
     /**
@@ -49326,8 +49336,8 @@ class GitHubAdapter {
             return data;
         }
         catch (error) {
-            logger.error(`Failed to fetch PR files: ${error}`);
-            throw new APIError(error.status ?? 500, `Failed to fetch PR files: ${error}`, error);
+            logger.error(`Failed to fetch PR files: ${safeError(error)}`);
+            throw new APIError(error.status ?? 500, `Failed to fetch PR files: ${safeError(error)}`);
         }
     }
     /**
@@ -49353,8 +49363,8 @@ class GitHubAdapter {
             logger.success(`✅ Posted batch review with ${params.comments.length} comments`);
         }
         catch (error) {
-            logger.error(`Failed to post batch review: ${error}`);
-            throw new APIError(error.status ?? 500, `Failed to post batch review: ${error}`, error);
+            logger.error(`Failed to post batch review: ${safeError(error)}`);
+            throw new APIError(error.status ?? 500, `Failed to post batch review: ${safeError(error)}`);
         }
     }
     /**
@@ -49374,8 +49384,8 @@ class GitHubAdapter {
             logger.success(`✅ Posted comment`);
         }
         catch (error) {
-            logger.error(`Failed to post comment: ${error}`);
-            throw new APIError(error.status ?? 500, `Failed to post comment: ${error}`, error);
+            logger.error(`Failed to post comment: ${safeError(error)}`);
+            throw new APIError(error.status ?? 500, `Failed to post comment: ${safeError(error)}`);
         }
     }
     /**
@@ -49395,8 +49405,8 @@ class GitHubAdapter {
             logger.success(`✅ Added labels`);
         }
         catch (error) {
-            logger.error(`Failed to add labels: ${error}`);
-            throw new APIError(error.status ?? 500, `Failed to add labels: ${error}`, error);
+            logger.error(`Failed to add labels: ${safeError(error)}`);
+            throw new APIError(error.status ?? 500, `Failed to add labels: ${safeError(error)}`);
         }
     }
     /**
@@ -49423,8 +49433,8 @@ class GitHubAdapter {
             };
         }
         catch (error) {
-            logger.error(`Failed to fetch PR info: ${error}`);
-            throw new APIError(error.status ?? 500, `Failed to fetch PR info: ${error}`, error);
+            logger.error(`Failed to fetch PR info: ${safeError(error)}`);
+            throw new APIError(error.status ?? 500, `Failed to fetch PR info: ${safeError(error)}`);
         }
     }
 }
@@ -49493,7 +49503,7 @@ class FrameworkDetector {
             return JSON.parse(content);
         }
         catch (error) {
-            logger.error(`Failed to read package.json: ${error}`);
+            logger.error(`Failed to read package.json: ${safeError(error)}`);
             return {};
         }
     }
@@ -49662,7 +49672,7 @@ class ConfigLoader {
             if (error instanceof ConfigError) {
                 throw error;
             }
-            throw new ConfigError(`Failed to load config from ${configFilePath}: ${error}`, { path: configFilePath, error });
+            throw new ConfigError(`Failed to load config from ${configFilePath}: ${safeError(error)}`, { path: configFilePath, error });
         }
     }
     /**
@@ -49694,7 +49704,7 @@ class ConfigLoader {
             return result;
         }
         catch (error) {
-            logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${error}`);
+            logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${safeError(error)}`);
             return {};
         }
     }
@@ -49712,7 +49722,7 @@ class ConfigLoader {
             return content;
         }
         catch (error) {
-            logger.warn(`Failed to load CLAUDE.md: ${error}`);
+            logger.warn(`Failed to load CLAUDE.md: ${safeError(error)}`);
             return "";
         }
     }

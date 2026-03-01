@@ -4,7 +4,7 @@ import { Command } from "commander";
 import { existsSync, readFileSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import { logger } from "./utils/logger.js";
+import { logger, safeError } from "./utils/logger.js";
 import { runReview } from "./core/review-engine.js";
 import { ReviewOptions, ValidationError } from "./core/types.js";
 
@@ -44,7 +44,7 @@ program
 
       process.exit(0);
     } catch (error) {
-      logger.error(`Initialization failed: ${error}`);
+      logger.error(`Initialization failed: ${safeError(error)}`);
       process.exit(1);
     }
   });
@@ -71,7 +71,7 @@ program
       if (error instanceof ValidationError) {
         logger.error(`❌ Validation Error: ${error.message}`);
       } else {
-        logger.error(`❌ Review failed: ${error}`);
+        logger.error(`❌ Review failed: ${safeError(error)}`);
       }
       process.exit(1);
     }

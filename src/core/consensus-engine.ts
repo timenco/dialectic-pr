@@ -11,7 +11,7 @@ import {
   CodeReviewResponse,
 } from "./types.js";
 import { ClaudeAdapter } from "../adapters/claude-api.js";
-import { logger } from "../utils/logger.js";
+import { logger, safeError } from "../utils/logger.js";
 
 /**
  * Agent Consensus Instructions (cacheable - never changes)
@@ -437,8 +437,7 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
 
       return { issues, consensus, debateNarrative };
     } catch (error) {
-      logger.error(`Failed to parse review response: ${error}`);
-      logger.debug(`Response text: ${responseText.substring(0, 500)}`);
+      logger.error(`Failed to parse review response: ${safeError(error)}`);
 
       // Even if JSON parsing fails, try to salvage the narrative
       const hasStepMarkers = responseText.includes("STEP 1") || responseText.includes("STEP 2");

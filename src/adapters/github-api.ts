@@ -4,7 +4,7 @@ import {
   BatchReviewParams,
   APIError,
 } from "../core/types.js";
-import { logger } from "../utils/logger.js";
+import { logger, safeError } from "../utils/logger.js";
 
 /**
  * GitHub API Adapter
@@ -39,11 +39,10 @@ export class GitHubAdapter {
       logger.success(`✅ Fetched PR diff (${(data as unknown as string).length} bytes)`);
       return data as unknown as string;
     } catch (error) {
-      logger.error(`Failed to fetch PR diff: ${error}`);
+      logger.error(`Failed to fetch PR diff: ${safeError(error)}`);
       throw new APIError(
         (error as { status?: number }).status ?? 500,
-        `Failed to fetch PR diff: ${error}`,
-        error
+        `Failed to fetch PR diff: ${safeError(error)}`
       );
     }
   }
@@ -74,11 +73,10 @@ export class GitHubAdapter {
       logger.success(`✅ Fetched ${data.length} changed files`);
       return data;
     } catch (error) {
-      logger.error(`Failed to fetch PR files: ${error}`);
+      logger.error(`Failed to fetch PR files: ${safeError(error)}`);
       throw new APIError(
         (error as { status?: number }).status ?? 500,
-        `Failed to fetch PR files: ${error}`,
-        error
+        `Failed to fetch PR files: ${safeError(error)}`
       );
     }
   }
@@ -111,11 +109,10 @@ export class GitHubAdapter {
         `✅ Posted batch review with ${params.comments.length} comments`
       );
     } catch (error) {
-      logger.error(`Failed to post batch review: ${error}`);
+      logger.error(`Failed to post batch review: ${safeError(error)}`);
       throw new APIError(
         (error as { status?: number }).status ?? 500,
-        `Failed to post batch review: ${error}`,
-        error
+        `Failed to post batch review: ${safeError(error)}`
       );
     }
   }
@@ -138,11 +135,10 @@ export class GitHubAdapter {
 
       logger.success(`✅ Posted comment`);
     } catch (error) {
-      logger.error(`Failed to post comment: ${error}`);
+      logger.error(`Failed to post comment: ${safeError(error)}`);
       throw new APIError(
         (error as { status?: number }).status ?? 500,
-        `Failed to post comment: ${error}`,
-        error
+        `Failed to post comment: ${safeError(error)}`
       );
     }
   }
@@ -165,11 +161,10 @@ export class GitHubAdapter {
 
       logger.success(`✅ Added labels`);
     } catch (error) {
-      logger.error(`Failed to add labels: ${error}`);
+      logger.error(`Failed to add labels: ${safeError(error)}`);
       throw new APIError(
         (error as { status?: number }).status ?? 500,
-        `Failed to add labels: ${error}`,
-        error
+        `Failed to add labels: ${safeError(error)}`
       );
     }
   }
@@ -208,11 +203,10 @@ export class GitHubAdapter {
         changedFiles: data.changed_files,
       };
     } catch (error) {
-      logger.error(`Failed to fetch PR info: ${error}`);
+      logger.error(`Failed to fetch PR info: ${safeError(error)}`);
       throw new APIError(
         (error as { status?: number }).status ?? 500,
-        `Failed to fetch PR info: ${error}`,
-        error
+        `Failed to fetch PR info: ${safeError(error)}`
       );
     }
   }

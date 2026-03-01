@@ -87,4 +87,16 @@ class Logger {
 // Singleton instance
 export const logger = new Logger();
 
+/**
+ * Extract only the safe error message from an unknown error.
+ * Prevents leaking internal state, headers, or credentials
+ * that may be embedded in the full error object.
+ */
+export function safeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown error";
+}
+
 
