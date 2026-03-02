@@ -198,7 +198,7 @@ export class ConsensusEngine {
   constructor(
     private claudeAdapter: ClaudeAdapter,
     private projectConventions?: string,
-    private language?: string
+    private language: string = "en"
   ) {}
 
   /**
@@ -406,8 +406,19 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
           debateNarrative = narrativeText;
         }
       } else {
-        // Fallback: try entire response as JSON (backward compat)
-        jsonText = responseText;
+        // Fallback: find unfenced JSON with consensus_completed key
+        const unfencedMatch = responseText.match(/\{\s*"consensus_completed"\s*:\s*[\s\S]*?\n\}/);
+        if (unfencedMatch) {
+          jsonText = unfencedMatch[0];
+          const matchStart = unfencedMatch.index!;
+          const narrativeText = responseText.substring(0, matchStart).trim();
+          if (narrativeText.length > 0) {
+            debateNarrative = narrativeText;
+          }
+        } else {
+          // Last resort: try entire response as JSON
+          jsonText = responseText;
+        }
       }
 
       const cleanedJson = jsonText.trim();

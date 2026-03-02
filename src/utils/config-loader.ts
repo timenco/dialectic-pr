@@ -11,7 +11,7 @@ import { logger, safeError } from "./logger.js";
 export class ConfigLoader {
   private readonly defaultConfig: DialecticConfig = {
     model: DEFAULT_MODEL,
-    language: undefined,
+    language: "en",
     exclude_patterns: [],
     strategies: {
       small: { maxTokens: 16000 },

@@ -313,7 +313,7 @@ export interface CLIOptions {
 
 export interface DialecticConfig {
   model: string;
-  language?: string;
+  language: string;
   exclude_patterns: string[];
   strategies: StrategyConfig;
 }

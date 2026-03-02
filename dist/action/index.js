@@ -41190,7 +41190,7 @@ class ConsensusEngine {
     claudeAdapter;
     projectConventions;
     language;
-    constructor(claudeAdapter, projectConventions, language) {
+    constructor(claudeAdapter, projectConventions, language = "en") {
         this.claudeAdapter = claudeAdapter;
         this.projectConventions = projectConventions;
         this.language = language;
@@ -41366,8 +41366,20 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
                 }
             }
             else {
-                // Fallback: try entire response as JSON (backward compat)
-                jsonText = responseText;
+                // Fallback: find unfenced JSON with consensus_completed key
+                const unfencedMatch = responseText.match(/\{\s*"consensus_completed"\s*:\s*[\s\S]*?\n\}/);
+                if (unfencedMatch) {
+                    jsonText = unfencedMatch[0];
+                    const matchStart = unfencedMatch.index;
+                    const narrativeText = responseText.substring(0, matchStart).trim();
+                    if (narrativeText.length > 0) {
+                        debateNarrative = narrativeText;
+                    }
+                }
+                else {
+                    // Last resort: try entire response as JSON
+                    jsonText = responseText;
+                }
             }
             const cleanedJson = jsonText.trim();
             const parsed = JSON.parse(cleanedJson);
@@ -49673,7 +49685,7 @@ class FrameworkDetector {
 class ConfigLoader {
     defaultConfig = {
         model: DEFAULT_MODEL,
-        language: undefined,
+        language: "en",
         exclude_patterns: [],
         strategies: {
             small: { maxTokens: 16000 },
