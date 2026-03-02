@@ -3,7 +3,9 @@ import {
   ChangedFile,
   ContextFlags,
   GitHubPRInfo,
+  CRITICAL_MODULE_PATTERN,
 } from "./types.js";
+import { isSchemaFile } from "../utils/file-classifier.js";
 import { ExcludeFilter } from "../security/exclude-filter.js";
 import { SmartFilter } from "./smart-filter.js";
 import { MetricsCalculator } from "../utils/metrics-calculator.js";
@@ -162,18 +164,14 @@ ${file.content}
 
     return {
       testChanged: paths.some((p) => this.excludeFilter.isTestFile(p)),
-      schemaChanged: paths.some((p) =>
-        p.match(/\.(entity|schema|model)\.(ts|js)$/)
-      ),
+      schemaChanged: paths.some((p) => isSchemaFile(p)),
       apiRoutesChanged:
         frameworkName === "nextjs" &&
         paths.some((p) => p.includes("/api/")),
       controllersChanged:
         frameworkName === "nestjs" &&
         paths.some((p) => p.includes(".controller.ts")),
-      criticalModule: paths.some((p) =>
-        p.match(/\/(auth|payments|billing|security)\//)
-      ),
+      criticalModule: paths.some((p) => CRITICAL_MODULE_PATTERN.test(p)),
       configOnly: paths.every((p) => this.excludeFilter.isConfigFile(p)),
     };
   }
@@ -247,9 +245,7 @@ ${file.content}
    * Critical 모듈 변경인지 확인
    */
   isCriticalModule(files: string[]): boolean {
-    return files.some((f) =>
-      f.match(/\/(auth|payments|billing|security)\//)
-    );
+    return files.some((f) => CRITICAL_MODULE_PATTERN.test(f));
   }
 
   /**

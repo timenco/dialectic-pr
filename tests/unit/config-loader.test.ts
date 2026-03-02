@@ -1,4 +1,5 @@
 import { ConfigLoader } from "../../src/utils/config-loader";
+import { DEFAULT_MODEL } from "../../src/core/types";
 import { writeFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
@@ -26,7 +27,7 @@ describe("ConfigLoader", () => {
   describe("load()", () => {
     it("should return default config when no config file exists", async () => {
       const config = await configLoader.load(testDir);
-      expect(config.model).toBe("claude-sonnet-4-20250514");
+      expect(config.model).toBe(DEFAULT_MODEL);
       expect(config.exclude_patterns).toEqual([]);
     });
 
@@ -39,7 +40,7 @@ describe("ConfigLoader", () => {
       await writeFile(
         configPath,
         JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: DEFAULT_MODEL,
           exclude_patterns: ["**/*.lock"],
         })
       );
@@ -57,7 +58,7 @@ describe("ConfigLoader", () => {
       await writeFile(
         configPath,
         JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: DEFAULT_MODEL,
           false_positive_patterns: [],
           framework_specific: {},
         })
@@ -65,7 +66,7 @@ describe("ConfigLoader", () => {
 
       // Should not throw, just warn
       const config = await configLoader.load(testDir);
-      expect(config.model).toBe("claude-sonnet-4-20250514");
+      expect(config.model).toBe(DEFAULT_MODEL);
     });
   });
 

@@ -2,7 +2,13 @@ import {
   FrameworkName,
   FalsePositivePattern,
   PriorityRule,
+  CRITICAL_MODULE_PATTERN,
 } from "../core/types.js";
+import {
+  isTestFile,
+  isSchemaFile,
+  isConfigFile,
+} from "../utils/file-classifier.js";
 
 /**
  * Framework Interface
@@ -117,7 +123,7 @@ export abstract class BaseFramework implements Framework {
     if (files.some((f) => f.includes("/api/"))) {
       areas.push("🔌 API");
     }
-    if (files.some((f) => this.isTestFile(f))) {
+    if (files.some((f) => isTestFile(f))) {
       areas.push("🧪 Tests");
     }
 
@@ -131,7 +137,7 @@ export abstract class BaseFramework implements Framework {
     return [
       // Critical: Security-related
       {
-        pattern: /\/(auth|security|payments|billing)\//,
+        pattern: CRITICAL_MODULE_PATTERN,
         priority: "critical",
         reason: "Security-critical module",
       },
@@ -165,11 +171,10 @@ export abstract class BaseFramework implements Framework {
    * Critical 모듈 확인 (기본)
    */
   isCriticalModule(filePath: string): boolean {
-    const criticalPatterns = [
-      /\/(auth|security|payments|billing)\//,
-      /\.(guard|middleware)\.(ts|js)$/,
-    ];
-    return criticalPatterns.some((p) => p.test(filePath));
+    return (
+      CRITICAL_MODULE_PATTERN.test(filePath) ||
+      /\.(guard|middleware)\.(ts|js)$/.test(filePath)
+    );
   }
 
   /**
@@ -177,56 +182,11 @@ export abstract class BaseFramework implements Framework {
    */
   extractContextFlags(files: string[]): FrameworkContextFlags {
     return {
-      testChanged: files.some((f) => this.isTestFile(f)),
-      schemaChanged: files.some((f) => this.isSchemaFile(f)),
+      testChanged: files.some((f) => isTestFile(f)),
+      schemaChanged: files.some((f) => isSchemaFile(f)),
       criticalModule: files.some((f) => this.isCriticalModule(f)),
-      configOnly: files.every((f) => this.isConfigFile(f)),
+      configOnly: files.every((f) => isConfigFile(f)),
     };
-  }
-
-  /**
-   * 테스트 파일인지 확인
-   */
-  protected isTestFile(filePath: string): boolean {
-    return (
-      filePath.includes(".test.") ||
-      filePath.includes(".spec.") ||
-      filePath.includes("/__tests__/") ||
-      filePath.includes("/tests/")
-    );
-  }
-
-  /**
-   * 스키마 파일인지 확인
-   */
-  protected isSchemaFile(filePath: string): boolean {
-    return (
-      filePath.includes(".entity.") ||
-      filePath.includes(".schema.") ||
-      filePath.includes(".model.") ||
-      filePath.includes("/migrations/")
-    );
-  }
-
-  /**
-   * 설정 파일인지 확인
-   */
-  protected isConfigFile(filePath: string): boolean {
-    const configExtensions = [".json", ".yaml", ".yml", ".toml", ".ini", ".md"];
-    const configNames = [
-      "package.json",
-      "tsconfig.json",
-      "jest.config",
-      "vite.config",
-      "next.config",
-      ".eslintrc",
-      ".prettierrc",
-    ];
-
-    return (
-      configExtensions.some((ext) => filePath.endsWith(ext)) ||
-      configNames.some((name) => filePath.includes(name))
-    );
   }
 }
 

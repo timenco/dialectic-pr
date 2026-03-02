@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { ConfigError, DialecticConfig, FalsePositivePattern, GuardrailsFile } from "../core/types.js";
+import { ConfigError, DialecticConfig, FalsePositivePattern, GuardrailsFile, DEFAULT_MODEL } from "../core/types.js";
 import { logger, safeError } from "./logger.js";
 
 /**
@@ -10,7 +10,7 @@ import { logger, safeError } from "./logger.js";
  */
 export class ConfigLoader {
   private readonly defaultConfig: DialecticConfig = {
-    model: "claude-sonnet-4-20250514",
+    model: DEFAULT_MODEL,
     language: undefined,
     exclude_patterns: [],
     strategies: {

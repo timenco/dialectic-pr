@@ -12,6 +12,7 @@ import { SmartFilter } from '../src/core/smart-filter';
 import { FrameworkDetector } from '../src/frameworks/detector';
 import { MetricsCalculator } from '../src/utils/metrics-calculator';
 import { ConfigLoader } from '../src/utils/config-loader';
+import { DEFAULT_MODEL } from '../src/core/types';
 import type { ChangedFile } from '../src/core/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -45,7 +46,7 @@ describe('Dialectic PR Integration Tests', () => {
 
     it('should load default configuration', async () => {
       const config = await configLoader.load(process.cwd());
-      expect(config.model).toBe('claude-sonnet-4-20250514');
+      expect(config.model).toBe(DEFAULT_MODEL);
       expect(config.exclude_patterns).toBeInstanceOf(Array);
       expect(config.strategies).toBeDefined();
     });
@@ -179,7 +180,7 @@ describe('Dialectic PR Integration Tests', () => {
     it('should return default config when file does not exist', async () => {
       const config = await configLoader.load('/nonexistent/path');
 
-      expect(config.model).toBe('claude-sonnet-4-20250514');
+      expect(config.model).toBe(DEFAULT_MODEL);
       expect(config.exclude_patterns).toBeInstanceOf(Array);
       expect(config.strategies).toBeDefined();
     });

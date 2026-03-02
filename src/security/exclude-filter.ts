@@ -1,4 +1,9 @@
 import { minimatch } from "minimatch";
+import {
+  isSourceFile as classifySource,
+  isTestFile as classifyTest,
+  isConfigFile as classifyConfig,
+} from "../utils/file-classifier.js";
 
 /**
  * Exclude Filter
@@ -93,45 +98,23 @@ export class ExcludeFilter {
 
   /**
    * TypeScript/JavaScript 소스 파일인지 확인
-   * @param filePath 파일 경로
    */
   isSourceFile(filePath: string): boolean {
-    const sourceExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
-    return sourceExtensions.some((ext) => filePath.endsWith(ext));
+    return classifySource(filePath);
   }
 
   /**
    * 테스트 파일인지 확인
-   * @param filePath 파일 경로
    */
   isTestFile(filePath: string): boolean {
-    return (
-      filePath.includes(".test.") ||
-      filePath.includes(".spec.") ||
-      filePath.includes("/__tests__/") ||
-      filePath.includes("/tests/")
-    );
+    return classifyTest(filePath);
   }
 
   /**
    * 설정 파일인지 확인
-   * @param filePath 파일 경로
    */
   isConfigFile(filePath: string): boolean {
-    const configExtensions = [".json", ".yaml", ".yml", ".toml", ".ini"];
-    const configNames = [
-      "package.json",
-      "tsconfig.json",
-      "jest.config",
-      "vite.config",
-      "next.config",
-      "nest-cli.json",
-    ];
-
-    return (
-      configExtensions.some((ext) => filePath.endsWith(ext)) ||
-      configNames.some((name) => filePath.includes(name))
-    );
+    return classifyConfig(filePath);
   }
 
   /**

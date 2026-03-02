@@ -41,6 +41,7 @@ export {
 export { logger } from "./utils/logger.js";
 export { ConfigLoader } from "./utils/config-loader.js";
 export { MetricsCalculator } from "./utils/metrics-calculator.js";
+export { isSourceFile, isTestFile, isSchemaFile, isConfigFile } from "./utils/file-classifier.js";
 
 // False Positive Defense
 export {
