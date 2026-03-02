@@ -38059,8 +38059,10 @@ function safeError(error) {
 // Constants
 // ============================================================================
 const DEFAULT_MODEL = "claude-opus-4-6";
+/** 보안/결제 등 크리티컬 모듈 경로 그룹 (regex 조합용) */
+const CRITICAL_MODULE_PATH = "(auth|payments|billing|security)";
 /** 보안/결제 등 크리티컬 모듈 경로 패턴 */
-const types_CRITICAL_MODULE_PATTERN = /\/(auth|payments|billing|security)\//;
+const types_CRITICAL_MODULE_PATTERN = new RegExp(`\\/${CRITICAL_MODULE_PATH}\\/`);
 /** PR diff 크기별 전략 선택 임계값 (bytes) */
 const STRATEGY_THRESHOLDS = {
     SMALL: 51_200, // 50KB
@@ -40535,7 +40537,7 @@ class SmartFilter {
     defaultPriorityRules = [
         // Critical: 핵심 비즈니스 로직 및 보안
         {
-            pattern: new RegExp(`src${types_CRITICAL_MODULE_PATTERN.source}`),
+            pattern: new RegExp(`src\\/${CRITICAL_MODULE_PATH}\\/`),
             priority: "critical",
             reason: "Security-critical module",
         },

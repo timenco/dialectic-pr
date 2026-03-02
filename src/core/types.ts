@@ -8,8 +8,11 @@
 
 export const DEFAULT_MODEL = "claude-opus-4-6";
 
+/** 보안/결제 등 크리티컬 모듈 경로 그룹 (regex 조합용) */
+export const CRITICAL_MODULE_PATH = "(auth|payments|billing|security)";
+
 /** 보안/결제 등 크리티컬 모듈 경로 패턴 */
-export const CRITICAL_MODULE_PATTERN = /\/(auth|payments|billing|security)\//;
+export const CRITICAL_MODULE_PATTERN = new RegExp(`\\/${CRITICAL_MODULE_PATH}\\/`);
 
 /** PR diff 크기별 전략 선택 임계값 (bytes) */
 export const STRATEGY_THRESHOLDS = {

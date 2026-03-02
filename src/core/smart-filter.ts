@@ -3,7 +3,7 @@ import {
   FilePriority,
   PrioritizedFile,
   PriorityRule,
-  CRITICAL_MODULE_PATTERN,
+  CRITICAL_MODULE_PATH,
 } from "./types.js";
 import { logger } from "../utils/logger.js";
 import { MetricsCalculator } from "../utils/metrics-calculator.js";
@@ -18,7 +18,7 @@ export class SmartFilter {
   private readonly defaultPriorityRules: PriorityRule[] = [
     // Critical: 핵심 비즈니스 로직 및 보안
     {
-      pattern: new RegExp(`src${CRITICAL_MODULE_PATTERN.source}`),
+      pattern: new RegExp(`src\\/${CRITICAL_MODULE_PATH}\\/`),
       priority: "critical",
       reason: "Security-critical module",
     },
