@@ -3,6 +3,26 @@
  */
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+export const DEFAULT_MODEL = "claude-opus-4-6";
+
+/** 보안/결제 등 크리티컬 모듈 경로 그룹 (regex 조합용) */
+export const CRITICAL_MODULE_PATH = "(auth|payments|billing|security)";
+
+/** 보안/결제 등 크리티컬 모듈 경로 패턴 */
+export const CRITICAL_MODULE_PATTERN = new RegExp(`\\/${CRITICAL_MODULE_PATH}\\/`);
+
+/** PR diff 크기별 전략 선택 임계값 (bytes) */
+export const STRATEGY_THRESHOLDS = {
+  SMALL: 51_200,    // 50KB
+  MEDIUM: 153_600,  // 150KB
+  LARGE: 204_800,   // 200KB
+  XLARGE: 819_200,  // 800KB
+} as const;
+
+// ============================================================================
 // Framework Detection
 // ============================================================================
 

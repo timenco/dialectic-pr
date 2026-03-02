@@ -38056,6 +38056,21 @@ function safeError(error) {
  * Core type definitions for Dialectic PR
  */
 // ============================================================================
+// Constants
+// ============================================================================
+const DEFAULT_MODEL = "claude-opus-4-6";
+/** 보안/결제 등 크리티컬 모듈 경로 그룹 (regex 조합용) */
+const CRITICAL_MODULE_PATH = "(auth|payments|billing|security)";
+/** 보안/결제 등 크리티컬 모듈 경로 패턴 */
+const types_CRITICAL_MODULE_PATTERN = new RegExp(`\\/${CRITICAL_MODULE_PATH}\\/`);
+/** PR diff 크기별 전략 선택 임계값 (bytes) */
+const STRATEGY_THRESHOLDS = {
+    SMALL: 51_200, // 50KB
+    MEDIUM: 153_600, // 150KB
+    LARGE: 204_800, // 200KB
+    XLARGE: 819_200, // 800KB
+};
+// ============================================================================
 // Error Types
 // ============================================================================
 class DialecticError extends Error {
@@ -40236,7 +40251,53 @@ minimatch.Minimatch = Minimatch;
 minimatch.escape = escape_escape;
 minimatch.unescape = unescape_unescape;
 //# sourceMappingURL=index.js.map
+;// CONCATENATED MODULE: ./dist/utils/file-classifier.js
+/**
+ * File Classification Utilities
+ * 파일 유형 판별을 위한 단일 진실 공급원 (Single Source of Truth)
+ */
+const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+const TEST_INDICATORS = [".test.", ".spec.", "/__tests__/", "/tests/"];
+const SCHEMA_INDICATORS = [".entity.", ".schema.", ".model.", "/migrations/"];
+const CONFIG_EXTENSIONS = [".json", ".yaml", ".yml", ".toml", ".ini", ".md"];
+const CONFIG_NAMES = [
+    "package.json",
+    "tsconfig.json",
+    "jest.config",
+    "vite.config",
+    "next.config",
+    "nest-cli.json",
+    ".eslintrc",
+    ".prettierrc",
+];
+/**
+ * TypeScript/JavaScript 소스 파일인지 확인
+ */
+function isSourceFile(filePath) {
+    return SOURCE_EXTENSIONS.some((ext) => filePath.endsWith(ext));
+}
+/**
+ * 테스트 파일인지 확인
+ */
+function file_classifier_isTestFile(filePath) {
+    return TEST_INDICATORS.some((indicator) => filePath.includes(indicator));
+}
+/**
+ * 스키마/엔티티 파일인지 확인
+ */
+function file_classifier_isSchemaFile(filePath) {
+    return SCHEMA_INDICATORS.some((indicator) => filePath.includes(indicator));
+}
+/**
+ * 설정 파일인지 확인
+ */
+function file_classifier_isConfigFile(filePath) {
+    return (CONFIG_EXTENSIONS.some((ext) => filePath.endsWith(ext)) ||
+        CONFIG_NAMES.some((name) => filePath.includes(name)));
+}
+//# sourceMappingURL=file-classifier.js.map
 ;// CONCATENATED MODULE: ./dist/security/exclude-filter.js
+
 
 /**
  * Exclude Filter
@@ -40317,38 +40378,21 @@ class ExcludeFilter {
     }
     /**
      * TypeScript/JavaScript 소스 파일인지 확인
-     * @param filePath 파일 경로
      */
     isSourceFile(filePath) {
-        const sourceExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
-        return sourceExtensions.some((ext) => filePath.endsWith(ext));
+        return isSourceFile(filePath);
     }
     /**
      * 테스트 파일인지 확인
-     * @param filePath 파일 경로
      */
     isTestFile(filePath) {
-        return (filePath.includes(".test.") ||
-            filePath.includes(".spec.") ||
-            filePath.includes("/__tests__/") ||
-            filePath.includes("/tests/"));
+        return file_classifier_isTestFile(filePath);
     }
     /**
      * 설정 파일인지 확인
-     * @param filePath 파일 경로
      */
     isConfigFile(filePath) {
-        const configExtensions = [".json", ".yaml", ".yml", ".toml", ".ini"];
-        const configNames = [
-            "package.json",
-            "tsconfig.json",
-            "jest.config",
-            "vite.config",
-            "next.config",
-            "nest-cli.json",
-        ];
-        return (configExtensions.some((ext) => filePath.endsWith(ext)) ||
-            configNames.some((name) => filePath.includes(name)));
+        return file_classifier_isConfigFile(filePath);
     }
     /**
      * 제외 패턴 통계
@@ -40482,6 +40526,7 @@ Estimated Tokens: ~${this.estimateTokens(metrics.diffSize.toString())}
 ;// CONCATENATED MODULE: ./dist/core/smart-filter.js
 
 
+
 /**
  * Smart Filter
  * 핵심 파일 우선순위 큐 관리 및 토큰 제한 내 파일 선택
@@ -40492,7 +40537,7 @@ class SmartFilter {
     defaultPriorityRules = [
         // Critical: 핵심 비즈니스 로직 및 보안
         {
-            pattern: /src\/(auth|payments|billing|security)\//,
+            pattern: new RegExp(`src\\/${CRITICAL_MODULE_PATH}\\/`),
             priority: "critical",
             reason: "Security-critical module",
         },
@@ -40661,6 +40706,8 @@ class SmartFilter {
 ;// CONCATENATED MODULE: ./dist/core/analyzer.js
 
 
+
+
 /**
  * PR Analyzer
  * PR의 변경사항을 분석하고 메트릭 계산
@@ -40773,12 +40820,12 @@ ${file.content}
         const paths = files.map((f) => f.path);
         return {
             testChanged: paths.some((p) => this.excludeFilter.isTestFile(p)),
-            schemaChanged: paths.some((p) => p.match(/\.(entity|schema|model)\.(ts|js)$/)),
+            schemaChanged: paths.some((p) => file_classifier_isSchemaFile(p)),
             apiRoutesChanged: frameworkName === "nextjs" &&
                 paths.some((p) => p.includes("/api/")),
             controllersChanged: frameworkName === "nestjs" &&
                 paths.some((p) => p.includes(".controller.ts")),
-            criticalModule: paths.some((p) => p.match(/\/(auth|payments|billing|security)\//)),
+            criticalModule: paths.some((p) => types_CRITICAL_MODULE_PATTERN.test(p)),
             configOnly: paths.every((p) => this.excludeFilter.isConfigFile(p)),
         };
     }
@@ -40847,7 +40894,7 @@ ${file.content}
      * Critical 모듈 변경인지 확인
      */
     isCriticalModule(files) {
-        return files.some((f) => f.match(/\/(auth|payments|billing|security)\//));
+        return files.some((f) => types_CRITICAL_MODULE_PATTERN.test(f));
     }
     /**
      * 분석 요약 로그
@@ -40875,6 +40922,7 @@ ${file.content}
 }
 //# sourceMappingURL=analyzer.js.map
 ;// CONCATENATED MODULE: ./dist/core/strategy-selector.js
+
 
 /**
  * Strategy Selector
@@ -40932,20 +40980,16 @@ class StrategySelector {
         const criticalBoost = criticalModule ? 1.5 : 1;
         // 기본 전략 선택 (현재 워크플로우의 68-83줄 로직)
         let strategy;
-        if (diffSize < 51200) {
-            // < 50KB
+        if (diffSize < STRATEGY_THRESHOLDS.SMALL) {
             strategy = this.strategies.small;
         }
-        else if (diffSize < 153600) {
-            // < 150KB
+        else if (diffSize < STRATEGY_THRESHOLDS.MEDIUM) {
             strategy = this.strategies.medium;
         }
-        else if (diffSize < 204800) {
-            // < 200KB
+        else if (diffSize < STRATEGY_THRESHOLDS.LARGE) {
             strategy = this.strategies.large;
         }
-        else if (diffSize < 819200) {
-            // < 800KB
+        else if (diffSize < STRATEGY_THRESHOLDS.XLARGE) {
             strategy = this.strategies.xlarge;
         }
         else {
@@ -40979,9 +41023,9 @@ You are a dialectic code review system with two internal personas: HAWK (critica
 
 You MUST output EXACTLY this structure:
 
-=== STEP 1: REVIEW AGENT (HAWK) ANALYSIS ===
+=== STEP 1: REVIEW AGENT ANALYSIS ===
 
-As HAWK, list every potential issue using this EXACT numbered format:
+As HAWK (critical reviewer), list every potential issue using this EXACT numbered format:
 
 Issue 1 (bug/security/performance/maintainability): Description of the issue.
   - File: path/to/file.ts, Line: 42
@@ -40992,9 +41036,9 @@ Issue 2 (type): ...
 
 List ALL concerns — do not self-filter at this stage.
 
-=== STEP 2: DEV AGENT (OWL) CHALLENGE ===
+=== STEP 2: DEV AGENT CHALLENGE ===
 
-As OWL, challenge EVERY issue HAWK raised using this EXACT format:
+As OWL (pragmatic validator), challenge EVERY issue HAWK raised using this EXACT format:
 
 Issue 1 Challenge: Your counterargument with evidence...
 → REJECT (reason: e.g., "stylistic preference, no production impact, ROI too low")
@@ -41013,7 +41057,7 @@ ROI CHECK — for each issue, ask these 3 questions:
 Be SKEPTICAL — reject unless HIGH ROI and clearly a bug or security risk.
 SECURITY OVERRIDE: Security issues (injection, auth bypass, data leak) are ALWAYS kept regardless of ROI.
 
-=== STEP 3: FINAL CONSENSUS ===
+=== STEP 3: OUTPUT ===
 
 You MUST use this EXACT structure for STEP 3:
 
@@ -45205,7 +45249,7 @@ class ClaudeAdapter {
     model;
     client;
     retryHandler;
-    defaultModel = "claude-sonnet-4-20250514";
+    defaultModel = DEFAULT_MODEL;
     constructor(apiKey, model) {
         this.apiKey = apiKey;
         this.model = model;
@@ -49628,7 +49672,7 @@ class FrameworkDetector {
  */
 class ConfigLoader {
     defaultConfig = {
-        model: "claude-sonnet-4-20250514",
+        model: DEFAULT_MODEL,
         language: undefined,
         exclude_patterns: [],
         strategies: {
@@ -50231,6 +50275,8 @@ function getAllPatternIds() {
 }
 //# sourceMappingURL=builtin-patterns.js.map
 ;// CONCATENATED MODULE: ./dist/frameworks/base-framework.js
+
+
 /**
  * Base Framework Implementation
  * 모든 프레임워크의 기본 구현을 제공합니다.
@@ -50279,7 +50325,7 @@ class BaseFramework {
         if (files.some((f) => f.includes("/api/"))) {
             areas.push("🔌 API");
         }
-        if (files.some((f) => this.isTestFile(f))) {
+        if (files.some((f) => isTestFile(f))) {
             areas.push("🧪 Tests");
         }
         return areas;
@@ -50291,7 +50337,7 @@ class BaseFramework {
         return [
             // Critical: Security-related
             {
-                pattern: /\/(auth|security|payments|billing)\//,
+                pattern: CRITICAL_MODULE_PATTERN,
                 priority: "critical",
                 reason: "Security-critical module",
             },
@@ -50324,57 +50370,19 @@ class BaseFramework {
      * Critical 모듈 확인 (기본)
      */
     isCriticalModule(filePath) {
-        const criticalPatterns = [
-            /\/(auth|security|payments|billing)\//,
-            /\.(guard|middleware)\.(ts|js)$/,
-        ];
-        return criticalPatterns.some((p) => p.test(filePath));
+        return (CRITICAL_MODULE_PATTERN.test(filePath) ||
+            /\.(guard|middleware)\.(ts|js)$/.test(filePath));
     }
     /**
      * 컨텍스트 플래그 추출 (기본)
      */
     extractContextFlags(files) {
         return {
-            testChanged: files.some((f) => this.isTestFile(f)),
-            schemaChanged: files.some((f) => this.isSchemaFile(f)),
+            testChanged: files.some((f) => isTestFile(f)),
+            schemaChanged: files.some((f) => isSchemaFile(f)),
             criticalModule: files.some((f) => this.isCriticalModule(f)),
-            configOnly: files.every((f) => this.isConfigFile(f)),
+            configOnly: files.every((f) => isConfigFile(f)),
         };
-    }
-    /**
-     * 테스트 파일인지 확인
-     */
-    isTestFile(filePath) {
-        return (filePath.includes(".test.") ||
-            filePath.includes(".spec.") ||
-            filePath.includes("/__tests__/") ||
-            filePath.includes("/tests/"));
-    }
-    /**
-     * 스키마 파일인지 확인
-     */
-    isSchemaFile(filePath) {
-        return (filePath.includes(".entity.") ||
-            filePath.includes(".schema.") ||
-            filePath.includes(".model.") ||
-            filePath.includes("/migrations/"));
-    }
-    /**
-     * 설정 파일인지 확인
-     */
-    isConfigFile(filePath) {
-        const configExtensions = [".json", ".yaml", ".yml", ".toml", ".ini", ".md"];
-        const configNames = [
-            "package.json",
-            "tsconfig.json",
-            "jest.config",
-            "vite.config",
-            "next.config",
-            ".eslintrc",
-            ".prettierrc",
-        ];
-        return (configExtensions.some((ext) => filePath.endsWith(ext)) ||
-            configNames.some((name) => filePath.includes(name)));
     }
 }
 /**
@@ -50460,6 +50468,18 @@ class ProjectRulesLoader {
 
 
 /**
+ * Convert model ID to display name
+ * e.g. "claude-opus-4-6" → "Claude Opus 4.6"
+ */
+function formatModelName(modelId) {
+    const match = modelId.match(/^claude-(\w+)-(\d+)-(\d+)/);
+    if (match) {
+        const [, family, major, minor] = match;
+        return `Claude ${family.charAt(0).toUpperCase() + family.slice(1)} ${major}.${minor}`;
+    }
+    return modelId;
+}
+/**
  * Extract consensus verdict/fpRate for display in metrics
  */
 function extractConsensusData(result) {
@@ -50513,7 +50533,7 @@ function formatFallbackIssues(result) {
 /**
  * Format review result into a GitHub comment body
  */
-function formatReviewBody(result, analysis) {
+function formatReviewBody(result, analysis, modelId) {
     const lines = [];
     const { verdict, fpRate } = extractConsensusData(result);
     // Header
@@ -50527,7 +50547,7 @@ function formatReviewBody(result, analysis) {
     lines.push(`- **변경 라인**: +${analysis.metrics.addedLines}/-${analysis.metrics.deletedLines}`);
     const areas = result.summary.affectedAreas.length > 0
         ? result.summary.affectedAreas.join(", ")
-        : "—";
+        : "기타";
     lines.push(`- **영향 영역**: ${areas}`);
     // Consensus line with verdict emoji
     const verdictEmoji = verdict === "APPROVE" ? "✅ LGTM" : verdict === "REQUEST_CHANGES" ? "🔴 Changes Requested" : "💬 Needs Discussion";
@@ -50537,11 +50557,11 @@ function formatReviewBody(result, analysis) {
     if (analysis.context.flags.criticalModule)
         flagParts.push("🔴 크리티컬 모듈");
     if (analysis.context.flags.schemaChanged)
-        flagParts.push("📐 Schema");
+        flagParts.push("📐 스키마");
     if (analysis.context.flags.testChanged)
-        flagParts.push("🧪 Tests");
+        flagParts.push("🧪 테스트 포함");
     if (analysis.context.flags.configOnly)
-        flagParts.push("⚙️ Config");
+        flagParts.push("⚙️ 설정만");
     if (flagParts.length > 0) {
         lines.push(`- **플래그**: ${flagParts.join(", ")}`);
     }
@@ -50559,7 +50579,8 @@ function formatReviewBody(result, analysis) {
     lines.push("---");
     lines.push("");
     // Footer
-    lines.push("*🪄 Generated by [Dialectic PR Review](https://github.com/timenco/dialectic-pr)*");
+    const modelName = formatModelName(modelId);
+    lines.push(`*🪄 Generated by ${modelName} · [Dialectic PR Review](https://github.com/timenco/dialectic-pr)*`);
     lines.push("*💡 Tip: `skip-ai-review` 라벨을 추가하면 자동 리뷰를 건너뜁니다*");
     return lines.join("\n");
 }
@@ -50662,7 +50683,7 @@ async function runReview(options) {
     logger.info(`Critical Issues: ${result.summary.criticalIssues}`);
     logger.info(`Assessment: ${result.summary.overallAssessment}`);
     // 14. Format and post
-    const commentBody = formatReviewBody(result, analysis);
+    const commentBody = formatReviewBody(result, analysis, config.model);
     let posted = false;
     if (!options.dryRun) {
         await githubAdapter.postComment(prInfo, commentBody);

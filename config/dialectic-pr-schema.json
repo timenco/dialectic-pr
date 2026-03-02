@@ -12,10 +12,10 @@
     "model": {
       "type": "string",
       "description": "Claude model to use for review",
-      "default": "claude-sonnet-4-20250514",
+      "default": "claude-opus-4-6",
       "examples": [
-        "claude-sonnet-4-20250514",
-        "claude-opus-4-20250514"
+        "claude-opus-4-6",
+        "claude-sonnet-4-6"
       ]
     },
     "language": {

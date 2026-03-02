@@ -1,4 +1,4 @@
-import { PRAnalysis, ReviewStrategy, StrategyName } from "./types.js";
+import { PRAnalysis, ReviewStrategy, StrategyName, STRATEGY_THRESHOLDS } from "./types.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -65,17 +65,13 @@ export class StrategySelector {
     // 기본 전략 선택 (현재 워크플로우의 68-83줄 로직)
     let strategy: ReviewStrategy;
 
-    if (diffSize < 51200) {
-      // < 50KB
+    if (diffSize < STRATEGY_THRESHOLDS.SMALL) {
       strategy = this.strategies.small;
-    } else if (diffSize < 153600) {
-      // < 150KB
+    } else if (diffSize < STRATEGY_THRESHOLDS.MEDIUM) {
       strategy = this.strategies.medium;
-    } else if (diffSize < 204800) {
-      // < 200KB
+    } else if (diffSize < STRATEGY_THRESHOLDS.LARGE) {
       strategy = this.strategies.large;
-    } else if (diffSize < 819200) {
-      // < 800KB
+    } else if (diffSize < STRATEGY_THRESHOLDS.XLARGE) {
       strategy = this.strategies.xlarge;
     } else {
       strategy = this.strategies.skip;

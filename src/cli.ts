@@ -6,7 +6,7 @@ import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { logger, safeError } from "./utils/logger.js";
 import { runReview } from "./core/review-engine.js";
-import { ReviewOptions, ValidationError } from "./core/types.js";
+import { ReviewOptions, ValidationError, DEFAULT_MODEL } from "./core/types.js";
 
 const program = new Command();
 
@@ -108,7 +108,7 @@ async function initCommand(): Promise<void> {
   const configPath = join(githubDir, "dialectic-pr.json");
   const configTemplate = `{
   "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
-  "model": "claude-sonnet-4-20250514",
+  "model": "${DEFAULT_MODEL}",
   "exclude_patterns": []
 }
 `;

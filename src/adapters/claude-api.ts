@@ -4,6 +4,7 @@ import {
   ClaudeResponse,
   TokenUsage,
   AdvancedClaudeOptions,
+  DEFAULT_MODEL,
 } from "../core/types.js";
 import { RetryHandler } from "./retry-handler.js";
 import { logger } from "../utils/logger.js";
@@ -15,7 +16,7 @@ import { logger } from "../utils/logger.js";
 export class ClaudeAdapter {
   private readonly client: Anthropic;
   private readonly retryHandler: RetryHandler;
-  private readonly defaultModel = "claude-sonnet-4-20250514";
+  private readonly defaultModel = DEFAULT_MODEL;
 
   constructor(
     private apiKey: string,
