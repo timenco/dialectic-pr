@@ -41350,17 +41350,21 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
      */
     parseReviewResponse(responseText) {
         try {
-            // Find the LAST ```json ``` block (CONSENSUS_JSON)
-            const jsonBlocks = [...responseText.matchAll(/```(?:json)?\s*\n([\s\S]*?)\n```/g)];
+            // Find the code block containing consensus_completed (not just the last block,
+            // because Claude may output code suggestions after the JSON block)
+            const allCodeBlocks = [...responseText.matchAll(/```(?:\w*)?\s*\n([\s\S]*?)\n```/g)];
+            const consensusBlock = allCodeBlocks.find(block => block[1].includes('"consensus_completed"'));
             let jsonText;
             let debateNarrative;
-            if (jsonBlocks.length > 0) {
-                // Use the last JSON block
-                const lastBlock = jsonBlocks[jsonBlocks.length - 1];
-                jsonText = lastBlock[1];
-                // Everything before the last JSON block is the debate narrative
-                const lastBlockStart = lastBlock.index;
-                const narrativeText = responseText.substring(0, lastBlockStart).trim();
+            if (consensusBlock) {
+                jsonText = consensusBlock[1];
+                // Everything before the consensus JSON block is the debate narrative
+                const blockStart = consensusBlock.index;
+                const blockEnd = blockStart + consensusBlock[0].length;
+                // Narrative = text before JSON block + any text after it (code suggestions etc.)
+                const before = responseText.substring(0, blockStart).trim();
+                const after = responseText.substring(blockEnd).trim();
+                const narrativeText = after ? `${before}\n\n${after}` : before;
                 if (narrativeText.length > 0) {
                     debateNarrative = narrativeText;
                 }
