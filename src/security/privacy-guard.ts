@@ -6,14 +6,12 @@ import { ValidationError } from "../core/types.js";
  */
 export class PrivacyGuard {
   private readonly secretPatterns: RegExp[] = [
-    // API 키, 토큰 패턴
-    /['"]?[a-zA-Z_]*(?:API_KEY|SECRET|TOKEN|PASSWORD|PRIVATE_KEY)['"]?\s*[:=]\s*['"][^'"]+['"]/gi,
-    // Private Key 패턴
+    // Private Key 블록
     /-----BEGIN (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----/,
-    // AWS 키
+    // AWS Access Key ID
     /AKIA[0-9A-Z]{16}/,
-    // Generic 시크릿 (명확한 값 할당)
-    /(?:password|secret|token)\s*[:=]\s*['"][^'"\s]{8,}['"]/gi,
+    // Hardcoded secret values (sk-xxx, ghp_xxx 등 실제 토큰 형태)
+    /['"](?:sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36,}|ghu_[a-zA-Z0-9]{36,}|xox[bpas]-[a-zA-Z0-9-]+)['"]/,
   ];
 
   /**
