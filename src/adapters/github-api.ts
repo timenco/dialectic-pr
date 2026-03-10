@@ -1,10 +1,16 @@
 import { Octokit } from "@octokit/rest";
 import {
   GitHubPRInfo,
-  BatchReviewParams,
   APIError,
 } from "../core/types.js";
 import { logger, safeError } from "../utils/logger.js";
+
+function toAPIError(error: unknown, message: string): APIError {
+  return new APIError(
+    (error as { status?: number }).status ?? 500,
+    `${message}: ${safeError(error)}`
+  );
+}
 
 /**
  * GitHub API Adapter
@@ -36,14 +42,13 @@ export class GitHubAdapter {
         },
       });
 
-      logger.success(`✅ Fetched PR diff (${(data as unknown as string).length} bytes)`);
-      return data as unknown as string;
+      // Octokit types this as object, but mediaType "diff" returns raw string
+      const diff = data as unknown as string;
+      logger.success(`✅ Fetched PR diff (${diff.length} bytes)`);
+      return diff;
     } catch (error) {
       logger.error(`Failed to fetch PR diff: ${safeError(error)}`);
-      throw new APIError(
-        (error as { status?: number }).status ?? 500,
-        `Failed to fetch PR diff: ${safeError(error)}`
-      );
+      throw toAPIError(error, "Failed to fetch PR diff");
     }
   }
 
@@ -74,46 +79,7 @@ export class GitHubAdapter {
       return data;
     } catch (error) {
       logger.error(`Failed to fetch PR files: ${safeError(error)}`);
-      throw new APIError(
-        (error as { status?: number }).status ?? 500,
-        `Failed to fetch PR files: ${safeError(error)}`
-      );
-    }
-  }
-
-  /**
-   * Batch Review 작성
-   * 여러 코멘트를 하나의 Review로 묶어서 전송
-   * @param params Batch Review 파라미터
-   */
-  async postBatchReview(params: BatchReviewParams): Promise<void> {
-    logger.info(
-      `💬 Posting batch review with ${params.comments.length} comments...`
-    );
-
-    try {
-      await this.octokit.pulls.createReview({
-        owner: params.owner,
-        repo: params.repo,
-        pull_number: params.prNumber,
-        body: params.body,
-        event: params.event || "COMMENT",
-        comments: params.comments.map((c) => ({
-          path: c.path,
-          position: c.position,
-          body: c.body,
-        })),
-      });
-
-      logger.success(
-        `✅ Posted batch review with ${params.comments.length} comments`
-      );
-    } catch (error) {
-      logger.error(`Failed to post batch review: ${safeError(error)}`);
-      throw new APIError(
-        (error as { status?: number }).status ?? 500,
-        `Failed to post batch review: ${safeError(error)}`
-      );
+      throw toAPIError(error, "Failed to fetch PR files");
     }
   }
 
@@ -136,78 +102,7 @@ export class GitHubAdapter {
       logger.success(`✅ Posted comment`);
     } catch (error) {
       logger.error(`Failed to post comment: ${safeError(error)}`);
-      throw new APIError(
-        (error as { status?: number }).status ?? 500,
-        `Failed to post comment: ${safeError(error)}`
-      );
-    }
-  }
-
-  /**
-   * PR에 라벨 추가
-   * @param prInfo PR 정보
-   * @param labels 추가할 라벨 목록
-   */
-  async addLabels(prInfo: GitHubPRInfo, labels: string[]): Promise<void> {
-    logger.info(`🏷️  Adding labels: ${labels.join(", ")}`);
-
-    try {
-      await this.octokit.issues.addLabels({
-        owner: prInfo.owner,
-        repo: prInfo.repo,
-        issue_number: prInfo.pullNumber,
-        labels,
-      });
-
-      logger.success(`✅ Added labels`);
-    } catch (error) {
-      logger.error(`Failed to add labels: ${safeError(error)}`);
-      throw new APIError(
-        (error as { status?: number }).status ?? 500,
-        `Failed to add labels: ${safeError(error)}`
-      );
-    }
-  }
-
-  /**
-   * PR 정보 가져오기
-   * @param prInfo PR 정보
-   */
-  async getPRInfo(prInfo: GitHubPRInfo): Promise<{
-    title: string;
-    body: string | null;
-    state: string;
-    isDraft: boolean;
-    additions: number;
-    deletions: number;
-    changedFiles: number;
-  }> {
-    logger.info(`📥 Fetching PR info for #${prInfo.pullNumber}...`);
-
-    try {
-      const { data } = await this.octokit.pulls.get({
-        owner: prInfo.owner,
-        repo: prInfo.repo,
-        pull_number: prInfo.pullNumber,
-      });
-
-      logger.success(`✅ Fetched PR info`);
-
-      return {
-        title: data.title,
-        body: data.body,
-        state: data.state,
-        isDraft: data.draft || false,
-        additions: data.additions,
-        deletions: data.deletions,
-        changedFiles: data.changed_files,
-      };
-    } catch (error) {
-      logger.error(`Failed to fetch PR info: ${safeError(error)}`);
-      throw new APIError(
-        (error as { status?: number }).status ?? 500,
-        `Failed to fetch PR info: ${safeError(error)}`
-      );
+      throw toAPIError(error, "Failed to post comment");
     }
   }
 

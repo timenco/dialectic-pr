@@ -1,5 +1,6 @@
 import {
   FrameworkName,
+  ContextFlags,
   FalsePositivePattern,
   PriorityRule,
   CRITICAL_MODULE_PATTERN,
@@ -50,23 +51,7 @@ export interface Framework {
   /**
    * 프레임워크 특화 컨텍스트 플래그 추출
    */
-  extractContextFlags(files: string[]): FrameworkContextFlags;
-}
-
-/**
- * Framework-specific context flags
- */
-export interface FrameworkContextFlags {
-  /** 테스트 파일 변경 여부 */
-  testChanged: boolean;
-  /** 스키마/엔티티 변경 여부 */
-  schemaChanged: boolean;
-  /** Critical 모듈 변경 여부 */
-  criticalModule: boolean;
-  /** 설정 파일만 변경 여부 */
-  configOnly: boolean;
-  /** 프레임워크별 추가 플래그 */
-  [key: string]: boolean;
+  extractContextFlags(files: string[]): ContextFlags;
 }
 
 /**
@@ -80,28 +65,10 @@ export abstract class BaseFramework implements Framework {
 
   /**
    * 기본 False Positive 패턴 (공통)
+   * 공통 패턴은 BUILTIN_PATTERNS에 정의되어 있으므로 빈 배열 반환
    */
   getFalsePositivePatterns(): FalsePositivePattern[] {
-    return [
-      {
-        id: "console-log-intentional",
-        category: "logging",
-        explanation: "Console.log in development/debug code may be intentional",
-        falsePositiveIndicators: [
-          "console.log should be removed",
-          "use proper logging",
-        ],
-      },
-      {
-        id: "any-type-intentional",
-        category: "validation",
-        explanation: "Some 'any' types are intentional for flexibility",
-        falsePositiveIndicators: [
-          "avoid using any",
-          "use proper type",
-        ],
-      },
-    ];
+    return [];
   }
 
   /**
@@ -143,13 +110,13 @@ export abstract class BaseFramework implements Framework {
       },
       // High: Source code
       {
-        pattern: /src\/.*\.(ts|tsx|js|jsx)$/,
+        pattern: /src\/.*\.(ts|tsx|js|jsx|py)$/,
         priority: "high",
         reason: "Source code",
       },
       // Normal: General code
       {
-        pattern: /\.(ts|tsx|js|jsx)$/,
+        pattern: /\.(ts|tsx|js|jsx|py)$/,
         priority: "normal",
         reason: "Code file",
       },
@@ -173,17 +140,20 @@ export abstract class BaseFramework implements Framework {
   isCriticalModule(filePath: string): boolean {
     return (
       CRITICAL_MODULE_PATTERN.test(filePath) ||
-      /\.(guard|middleware)\.(ts|js)$/.test(filePath)
+      /\.(guard|middleware)\.(ts|js)$/.test(filePath) ||
+      /middleware\.py$/.test(filePath)
     );
   }
 
   /**
    * 컨텍스트 플래그 추출 (기본)
    */
-  extractContextFlags(files: string[]): FrameworkContextFlags {
+  extractContextFlags(files: string[]): ContextFlags {
     return {
       testChanged: files.some((f) => isTestFile(f)),
       schemaChanged: files.some((f) => isSchemaFile(f)),
+      apiRoutesChanged: false,
+      controllersChanged: false,
       criticalModule: files.some((f) => this.isCriticalModule(f)),
       configOnly: files.every((f) => isConfigFile(f)),
     };

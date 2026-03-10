@@ -1,14 +1,19 @@
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
-import { ConfigError, DialecticConfig, FalsePositivePattern, GuardrailsFile, DEFAULT_MODEL } from "../core/types.js";
+import { ConfigError, DialecticConfig, GuardrailsFile, DEFAULT_MODEL } from "../core/types.js";
 import { logger, safeError } from "./logger.js";
+import { GuardrailsLoader } from "./guardrails-loader.js";
+import { ConventionsLoader } from "./conventions-loader.js";
 
 /**
  * Configuration Loader
  * .github/dialectic-pr.json 파일을 로드하고 검증
  */
 export class ConfigLoader {
+  private readonly guardrailsLoader = new GuardrailsLoader();
+  private readonly conventionsLoader = new ConventionsLoader();
+
   private readonly defaultConfig: DialecticConfig = {
     model: DEFAULT_MODEL,
     language: "en",
@@ -83,64 +88,14 @@ export class ConfigLoader {
    * .github/review-guardrails.json 자동 감지 및 로드
    */
   async loadGuardrails(repoPath: string): Promise<GuardrailsFile> {
-    const guardrailsPath = join(repoPath, ".github/review-guardrails.json");
-
-    if (!existsSync(guardrailsPath)) {
-      return {};
-    }
-
-    try {
-      const content = await readFile(guardrailsPath, "utf-8");
-      const parsed = JSON.parse(content);
-
-      // 배열 형식 [...] → { patterns: [...] }
-      if (Array.isArray(parsed)) {
-        const validPatterns = parsed.filter((p) => this.isValidFPPattern(p));
-        logger.info(`Loaded ${validPatterns.length} guardrail patterns from ${guardrailsPath}`);
-        return { patterns: validPatterns as FalsePositivePattern[] };
-      }
-
-      // 객체 형식 { patterns?: [...], disabled_patterns?: [...] }
-      const result: GuardrailsFile = {};
-
-      if (Array.isArray(parsed.patterns)) {
-        result.patterns = parsed.patterns.filter((p: unknown) =>
-          this.isValidFPPattern(p)
-        ) as FalsePositivePattern[];
-      }
-
-      if (Array.isArray(parsed.disabled_patterns)) {
-        result.disabled_patterns = parsed.disabled_patterns;
-      }
-
-      logger.info(
-        `Loaded guardrails from ${guardrailsPath}: ${result.patterns?.length ?? 0} patterns, ${result.disabled_patterns?.length ?? 0} disabled`
-      );
-      return result;
-    } catch (error) {
-      logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${safeError(error)}`);
-      return {};
-    }
+    return this.guardrailsLoader.load(repoPath);
   }
 
   /**
    * CLAUDE.md 자동 감지 및 로드
    */
   async loadClaudeMd(repoPath: string): Promise<string> {
-    const claudeMdPath = join(repoPath, "CLAUDE.md");
-
-    if (!existsSync(claudeMdPath)) {
-      return "";
-    }
-
-    try {
-      const content = await readFile(claudeMdPath, "utf-8");
-      logger.info(`Loaded project context from CLAUDE.md`);
-      return content;
-    } catch (error) {
-      logger.warn(`Failed to load CLAUDE.md: ${safeError(error)}`);
-      return "";
-    }
+    return this.conventionsLoader.load(repoPath);
   }
 
   /**
@@ -201,26 +156,5 @@ export class ConfigLoader {
         );
       }
     }
-  }
-
-  /**
-   * FP 패턴 유효성 검증
-   */
-  private isValidFPPattern(raw: unknown): boolean {
-    if (typeof raw !== "object" || raw === null) return false;
-    const obj = raw as Record<string, unknown>;
-    return (
-      typeof obj.id === "string" &&
-      typeof obj.category === "string" &&
-      typeof obj.explanation === "string" &&
-      Array.isArray(obj.falsePositiveIndicators)
-    );
-  }
-
-  /**
-   * 기본 설정 가져오기
-   */
-  getDefaultConfig(): DialecticConfig {
-    return { ...this.defaultConfig };
   }
 }

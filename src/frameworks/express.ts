@@ -1,5 +1,5 @@
-import { FalsePositivePattern, PriorityRule } from "../core/types.js";
-import { BaseFramework, FrameworkContextFlags } from "./base-framework.js";
+import { ContextFlags, FalsePositivePattern, PriorityRule } from "../core/types.js";
+import { BaseFramework } from "./base-framework.js";
 
 /**
  * Express Framework Implementation
@@ -46,17 +46,6 @@ COMMON_FALSE_POSITIVES:
 
   getFalsePositivePatterns(): FalsePositivePattern[] {
     return [
-      ...super.getFalsePositivePatterns(),
-      {
-        id: "express-middleware-order",
-        category: "validation",
-        explanation: "Middleware order is intentional and architecture-specific",
-        falsePositiveIndicators: [
-          "middleware order is wrong",
-          "should reorder middleware",
-          "incorrect middleware placement",
-        ],
-      },
       {
         id: "express-error-handler",
         category: "error-handling",
@@ -179,6 +168,7 @@ COMMON_FALSE_POSITIVES:
   }
 
   isCriticalModule(filePath: string): boolean {
+    if (super.isCriticalModule(filePath)) return true;
     const expressCriticalPatterns = [
       /\/(auth|security)\//,
       /auth\.middleware/,
@@ -188,7 +178,7 @@ COMMON_FALSE_POSITIVES:
     return expressCriticalPatterns.some((p) => p.test(filePath));
   }
 
-  extractContextFlags(files: string[]): FrameworkContextFlags {
+  extractContextFlags(files: string[]): ContextFlags {
     const baseFlags = super.extractContextFlags(files);
     
     return {

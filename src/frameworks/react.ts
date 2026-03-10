@@ -1,5 +1,5 @@
-import { FalsePositivePattern, PriorityRule } from "../core/types.js";
-import { BaseFramework, FrameworkContextFlags } from "./base-framework.js";
+import { ContextFlags, FalsePositivePattern, PriorityRule } from "../core/types.js";
+import { BaseFramework } from "./base-framework.js";
 
 /**
  * React Framework Implementation
@@ -44,7 +44,6 @@ COMMON_FALSE_POSITIVES:
 
   getFalsePositivePatterns(): FalsePositivePattern[] {
     return [
-      ...super.getFalsePositivePatterns(),
       {
         id: "react-empty-deps-array",
         category: "validation",
@@ -72,15 +71,6 @@ COMMON_FALSE_POSITIVES:
         falsePositiveIndicators: [
           "useCallback is unnecessary",
           "inline function is fine",
-        ],
-      },
-      {
-        id: "react-index-key-static",
-        category: "validation",
-        explanation: "Index as key is acceptable for static, non-reorderable lists",
-        falsePositiveIndicators: [
-          "don't use index as key",
-          "index key is anti-pattern",
         ],
       },
       {
@@ -169,6 +159,7 @@ COMMON_FALSE_POSITIVES:
   }
 
   isCriticalModule(filePath: string): boolean {
+    if (super.isCriticalModule(filePath)) return true;
     const reactCriticalPatterns = [
       /\/(auth|security)\//,
       /AuthContext/,
@@ -177,7 +168,7 @@ COMMON_FALSE_POSITIVES:
     return reactCriticalPatterns.some((p) => p.test(filePath));
   }
 
-  extractContextFlags(files: string[]): FrameworkContextFlags {
+  extractContextFlags(files: string[]): ContextFlags {
     const baseFlags = super.extractContextFlags(files);
     
     return {

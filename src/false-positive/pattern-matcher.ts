@@ -27,27 +27,6 @@ export class PatternMatcher {
   }
 
   /**
-   * 패턴 목록 설정
-   */
-  setPatterns(patterns: FalsePositivePattern[]): void {
-    this.patterns = patterns;
-  }
-
-  /**
-   * 패턴 추가
-   */
-  addPattern(pattern: FalsePositivePattern): void {
-    this.patterns.push(pattern);
-  }
-
-  /**
-   * 패턴 제거 (ID로)
-   */
-  removePattern(patternId: string): void {
-    this.patterns = this.patterns.filter((p) => p.id !== patternId);
-  }
-
-  /**
    * 리뷰 이슈가 False Positive인지 확인
    * @param issue 리뷰 이슈
    * @param fileContent 파일 내용 (선택적, 컨텍스트 확인용)
@@ -196,17 +175,4 @@ export class PatternMatcher {
     };
   }
 
-  /**
-   * 카테고리별 패턴 가져오기
-   */
-  getPatternsByCategory(category: string): FalsePositivePattern[] {
-    return this.patterns.filter((p) => p.category === category);
-  }
-
-  /**
-   * 현재 로드된 패턴 수
-   */
-  get patternCount(): number {
-    return this.patterns.length;
-  }
 }

@@ -1,9 +1,4 @@
 import { minimatch } from "minimatch";
-import {
-  isSourceFile as classifySource,
-  isTestFile as classifyTest,
-  isConfigFile as classifyConfig,
-} from "../utils/file-classifier.js";
 
 /**
  * Exclude Filter
@@ -25,6 +20,8 @@ export class ExcludeFilter {
     "**/yarn.lock",
     "**/pnpm-lock.yaml",
     "**/bun.lockb",
+    "**/Pipfile.lock",
+    "**/poetry.lock",
 
     // 빌드 결과물
     "**/*.min.js",
@@ -37,6 +34,14 @@ export class ExcludeFilter {
 
     // 의존성
     "**/node_modules/**",
+    "**/.venv/**",
+    "**/venv/**",
+
+    // Python cache/build
+    "**/__pycache__/**",
+    "**/*.pyc",
+    "**/.mypy_cache/**",
+    "**/.pytest_cache/**",
 
     // 바이너리/이미지 파일
     "**/*.svg",
@@ -79,87 +84,12 @@ export class ExcludeFilter {
   }
 
   /**
-   * 파일 목록 필터링
-   * @param files 파일 경로 배열
-   * @returns 제외되지 않은 파일들
-   */
-  filterFiles(files: string[]): string[] {
-    return files.filter((f) => !this.shouldExclude(f));
-  }
-
-  /**
    * 제외된 파일 목록 반환
    * @param files 전체 파일 경로 배열
    * @returns 제외된 파일들
    */
   getExcludedFiles(files: string[]): string[] {
     return files.filter((f) => this.shouldExclude(f));
-  }
-
-  /**
-   * TypeScript/JavaScript 소스 파일인지 확인
-   */
-  isSourceFile(filePath: string): boolean {
-    return classifySource(filePath);
-  }
-
-  /**
-   * 테스트 파일인지 확인
-   */
-  isTestFile(filePath: string): boolean {
-    return classifyTest(filePath);
-  }
-
-  /**
-   * 설정 파일인지 확인
-   */
-  isConfigFile(filePath: string): boolean {
-    return classifyConfig(filePath);
-  }
-
-  /**
-   * 제외 패턴 통계
-   */
-  getExcludeStats(files: string[]): {
-    total: number;
-    excluded: number;
-    included: number;
-    excludedByCategory: Record<string, number>;
-  } {
-    const excluded = this.getExcludedFiles(files);
-    const excludedByCategory: Record<string, number> = {
-      sensitive: 0,
-      lockFiles: 0,
-      build: 0,
-      binary: 0,
-      generated: 0,
-      other: 0,
-    };
-
-    for (const file of excluded) {
-      if (file.includes(".env") || file.includes("secret") || file.includes(".key")) {
-        excludedByCategory.sensitive++;
-      } else if (file.includes(".lock")) {
-        excludedByCategory.lockFiles++;
-      } else if (file.includes("/dist/") || file.includes("/build/")) {
-        excludedByCategory.build++;
-      } else if (
-        file.match(/\.(png|jpg|svg|woff|ttf)$/)
-      ) {
-        excludedByCategory.binary++;
-      } else if (file.includes("generated")) {
-        excludedByCategory.generated++;
-      } else {
-        excludedByCategory.other++;
-      }
-    }
-
-    return {
-      total: files.length,
-      excluded: excluded.length,
-      included: files.length - excluded.length,
-      excludedByCategory,
-    };
   }
 }
 

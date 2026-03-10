@@ -10,9 +10,12 @@ import { StrategySelector } from '../src/core/strategy-selector';
 import { ExcludeFilter } from '../src/security/exclude-filter';
 import { SmartFilter } from '../src/core/smart-filter';
 import { FrameworkDetector } from '../src/frameworks/detector';
+import { FrameworkService } from '../src/frameworks/framework-service';
 import { MetricsCalculator } from '../src/utils/metrics-calculator';
 import { ConfigLoader } from '../src/utils/config-loader';
 import { DEFAULT_MODEL } from '../src/core/types';
+import { isSourceFile, isTestFile, isConfigFile } from '../src/utils/file-classifier';
+import { registerAllFrameworks } from '../src/frameworks/index';
 import type { ChangedFile } from '../src/core/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -24,6 +27,8 @@ describe('Dialectic PR Integration Tests', () => {
   let configLoader: ConfigLoader;
 
   beforeAll(async () => {
+    registerAllFrameworks();
+
     // Load test configuration
     configLoader = new ConfigLoader();
     const config = await configLoader.load(process.cwd());
@@ -33,7 +38,7 @@ describe('Dialectic PR Integration Tests', () => {
     const smartFilter = new SmartFilter();
     const frameworkDetector = new FrameworkDetector();
 
-    analyzer = new PRAnalyzer(excludeFilter, smartFilter, frameworkDetector);
+    analyzer = new PRAnalyzer(excludeFilter, smartFilter, frameworkDetector, new FrameworkService());
     strategySelector = new StrategySelector();
   });
 
@@ -85,18 +90,9 @@ describe('Dialectic PR Integration Tests', () => {
     });
 
     it('should analyze PR and generate metrics', async () => {
-      const prInfo = {
-        owner: 'test-owner',
-        repo: 'test-repo',
-        pullNumber: 123,
-        baseBranch: 'main',
-        headBranch: 'feature/auth-improvements',
-      };
-
       const analysis = await analyzer.analyze(
         sampleDiff,
         changedFiles,
-        prInfo,
         process.cwd()
       );
 
@@ -145,18 +141,9 @@ describe('Dialectic PR Integration Tests', () => {
       const selector = new StrategySelector();
 
       // Create a mock analysis
-      const prInfo = {
-        owner: 'test-owner',
-        repo: 'test-repo',
-        pullNumber: 123,
-        baseBranch: 'main',
-        headBranch: 'feature/test',
-      };
-
       const analysis = await analyzer.analyze(
         sampleDiff,
         changedFiles,
-        prInfo,
         process.cwd()
       );
 
@@ -186,51 +173,41 @@ describe('Dialectic PR Integration Tests', () => {
     });
   });
 
-  describe('File Filtering', () => {
-    it('should filter out non-source files', () => {
-      const excludeFilter = new ExcludeFilter([
-        '**/*.lock',
-        '**/*.json',
-      ]);
-
-      expect(excludeFilter.isSourceFile('src/auth/auth.controller.ts')).toBe(true);
-      expect(excludeFilter.isSourceFile('src/index.js')).toBe(true);
-      expect(excludeFilter.isSourceFile('package.json')).toBe(false);
-      expect(excludeFilter.isSourceFile('package-lock.json')).toBe(false);
+  describe('File Classification', () => {
+    it('should identify source files', () => {
+      expect(isSourceFile('src/auth/auth.controller.ts')).toBe(true);
+      expect(isSourceFile('src/index.js')).toBe(true);
+      expect(isSourceFile('package.json')).toBe(false);
+      expect(isSourceFile('package-lock.json')).toBe(false);
       // .js files in dist are still source files unless explicitly excluded
-      expect(excludeFilter.isSourceFile('dist/bundle.js')).toBe(true);
+      expect(isSourceFile('dist/bundle.js')).toBe(true);
     });
 
     it('should detect test files', () => {
-      const excludeFilter = new ExcludeFilter([]);
-
-      expect(excludeFilter.isTestFile('src/auth/auth.controller.spec.ts')).toBe(true);
-      expect(excludeFilter.isTestFile('src/auth/auth.test.ts')).toBe(true);
-      expect(excludeFilter.isTestFile('tests/integration.test.ts')).toBe(true);
-      expect(excludeFilter.isTestFile('src/auth/auth.controller.ts')).toBe(false);
+      expect(isTestFile('src/auth/auth.controller.spec.ts')).toBe(true);
+      expect(isTestFile('src/auth/auth.test.ts')).toBe(true);
+      expect(isTestFile('tests/integration.test.ts')).toBe(true);
+      expect(isTestFile('src/auth/auth.controller.ts')).toBe(false);
     });
 
     it('should detect config files', () => {
-      const excludeFilter = new ExcludeFilter([]);
-
-      expect(excludeFilter.isConfigFile('tsconfig.json')).toBe(true);
-      expect(excludeFilter.isConfigFile('jest.config.js')).toBe(true);
-      expect(excludeFilter.isConfigFile('next.config.ts')).toBe(true);
-      expect(excludeFilter.isConfigFile('package.json')).toBe(true);
-      expect(excludeFilter.isConfigFile('src/config/database.ts')).toBe(false);
+      expect(isConfigFile('tsconfig.json')).toBe(true);
+      expect(isConfigFile('jest.config.js')).toBe(true);
+      expect(isConfigFile('next.config.ts')).toBe(true);
+      expect(isConfigFile('package.json')).toBe(true);
+      expect(isConfigFile('src/config/database.ts')).toBe(false);
     });
   });
 
   describe('Metrics Calculation', () => {
     it('should calculate PR metrics correctly', () => {
-      const metricsCalculator = new MetricsCalculator();
       const diff = fs.readFileSync(
         path.join(__dirname, '__fixtures__', 'sample-pr.diff'),
         'utf-8'
       );
       const files = ['src/auth/auth.controller.ts', 'src/auth/dto/login.dto.ts'];
 
-      const metrics = metricsCalculator.calculate(diff, files);
+      const metrics = MetricsCalculator.calculate(diff, files);
 
       expect(metrics.fileCount).toBe(2);
       expect(metrics.addedLines).toBeGreaterThan(0);

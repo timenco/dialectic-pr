@@ -1,5 +1,5 @@
-import { FalsePositivePattern, PriorityRule } from "../core/types.js";
-import { BaseFramework, FrameworkContextFlags } from "./base-framework.js";
+import { ContextFlags, FalsePositivePattern, PriorityRule } from "../core/types.js";
+import { BaseFramework } from "./base-framework.js";
 
 /**
  * NestJS Framework Implementation
@@ -40,37 +40,6 @@ COMMON_FALSE_POSITIVES:
 
   getFalsePositivePatterns(): FalsePositivePattern[] {
     return [
-      ...super.getFalsePositivePatterns(),
-      {
-        id: "nestjs-throw-error-with-filter",
-        category: "error-handling",
-        explanation: "AllExceptionsFilter converts all errors to proper HTTP responses",
-        falsePositiveIndicators: [
-          "throw new Error should be InternalServerErrorException",
-          "DB error exposure risk",
-          "should wrap in HttpException",
-        ],
-      },
-      {
-        id: "nestjs-constructor-di",
-        category: "dependency-injection",
-        explanation:
-          "NestJS manages DI lifecycle, manual instantiation is intentional for DTOs/entities",
-        falsePositiveIndicators: [
-          "should use dependency injection instead of new",
-          "tight coupling with new keyword",
-          "instantiate using DI container",
-        ],
-      },
-      {
-        id: "nestjs-logger-pattern",
-        category: "logging",
-        explanation: "Logger with constructor name is standard NestJS pattern",
-        falsePositiveIndicators: [
-          "Logger should not use DI",
-          "new Logger(ClassName.name) is anti-pattern",
-        ],
-      },
       {
         id: "nestjs-circular-dependency",
         category: "dependency-injection",
@@ -167,6 +136,7 @@ COMMON_FALSE_POSITIVES:
   }
 
   isCriticalModule(filePath: string): boolean {
+    if (super.isCriticalModule(filePath)) return true;
     const nestjsCriticalPatterns = [
       /\/(auth|security|payments|billing)\//,
       /\.(guard|middleware)\.ts$/,
@@ -175,7 +145,7 @@ COMMON_FALSE_POSITIVES:
     return nestjsCriticalPatterns.some((p) => p.test(filePath));
   }
 
-  extractContextFlags(files: string[]): FrameworkContextFlags {
+  extractContextFlags(files: string[]): ContextFlags {
     const baseFlags = super.extractContextFlags(files);
     
     return {

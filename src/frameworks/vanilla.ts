@@ -1,5 +1,5 @@
-import { FalsePositivePattern, PriorityRule } from "../core/types.js";
-import { BaseFramework, FrameworkContextFlags } from "./base-framework.js";
+import { ContextFlags, FalsePositivePattern, PriorityRule } from "../core/types.js";
+import { BaseFramework } from "./base-framework.js";
 
 /**
  * Vanilla TypeScript/JavaScript Framework Implementation
@@ -44,26 +44,6 @@ COMMON_FALSE_POSITIVES:
 
   getFalsePositivePatterns(): FalsePositivePattern[] {
     return [
-      ...super.getFalsePositivePatterns(),
-      {
-        id: "ts-any-intentional",
-        category: "validation",
-        explanation: "Some 'any' types are intentional for third-party lib compatibility",
-        falsePositiveIndicators: [
-          "should not use any",
-          "replace any with proper type",
-          "any is dangerous",
-        ],
-      },
-      {
-        id: "ts-type-assertion",
-        category: "validation",
-        explanation: "Type assertions (as X) may be intentional for known-safe operations",
-        falsePositiveIndicators: [
-          "avoid type assertions",
-          "type assertion is unsafe",
-        ],
-      },
       {
         id: "ts-empty-catch",
         category: "error-handling",
@@ -80,15 +60,6 @@ COMMON_FALSE_POSITIVES:
         falsePositiveIndicators: [
           "remove console.log",
           "use proper logger",
-        ],
-      },
-      {
-        id: "ts-non-null-assertion",
-        category: "validation",
-        explanation: "Non-null assertion (!) may be valid when nullability is guaranteed",
-        falsePositiveIndicators: [
-          "avoid non-null assertion",
-          "use optional chaining instead",
         ],
       },
     ];
@@ -152,7 +123,7 @@ COMMON_FALSE_POSITIVES:
     return super.isCriticalModule(filePath);
   }
 
-  extractContextFlags(files: string[]): FrameworkContextFlags {
+  extractContextFlags(files: string[]): ContextFlags {
     const baseFlags = super.extractContextFlags(files);
     
     return {

@@ -1,4 +1,5 @@
 import { Metrics } from "../core/types.js";
+import { isTestFile, isConfigFile, isSourceFile } from "./file-classifier.js";
 
 /**
  * Metrics Calculator
@@ -10,7 +11,7 @@ export class MetricsCalculator {
    * @param diff Git diff 문자열
    * @param files 변경된 파일 목록
    */
-  calculate(diff: string, files: string[]): Metrics {
+  static calculate(diff: string, files: string[]): Metrics {
     const lines = diff.split("\n");
 
     let addedLines = 0;
@@ -24,15 +25,14 @@ export class MetricsCalculator {
       }
     }
 
-    const tsFileCount = files.filter((f) =>
-      f.match(/\.(ts|tsx)$/)
-    ).length;
+    let tsFileCount = 0;
+    let jsFileCount = 0;
+    for (const f of files) {
+      if (/\.(ts|tsx)$/.test(f)) tsFileCount++;
+      else if (/\.(js|jsx|mjs|cjs)$/.test(f)) jsFileCount++;
+    }
 
-    const jsFileCount = files.filter((f) =>
-      f.match(/\.(js|jsx|mjs|cjs)$/)
-    ).length;
-
-    const coreFileCount = this.countCoreFiles(files);
+    const coreFileCount = MetricsCalculator.countCoreFiles(files);
 
     return {
       fileCount: files.length,
@@ -48,25 +48,11 @@ export class MetricsCalculator {
   /**
    * 핵심 파일 수 계산 (테스트, 설정 파일 제외)
    */
-  private countCoreFiles(files: string[]): number {
+  private static countCoreFiles(files: string[]): number {
     return files.filter((f) => {
-      // 테스트 파일 제외
-      if (f.includes(".test.") || f.includes(".spec.")) {
-        return false;
-      }
-
-      // 설정 파일 제외
-      if (
-        f.endsWith(".json") ||
-        f.endsWith(".yaml") ||
-        f.endsWith(".yml") ||
-        f.endsWith(".md")
-      ) {
-        return false;
-      }
-
-      // 소스 파일만 포함
-      return f.match(/\.(ts|tsx|js|jsx|mjs|cjs)$/);
+      if (isTestFile(f)) return false;
+      if (isConfigFile(f)) return false;
+      return isSourceFile(f);
     }).length;
   }
 
@@ -74,31 +60,8 @@ export class MetricsCalculator {
    * 토큰 수 추정 (대략 4 chars ≈ 1 token)
    * @param text 텍스트
    */
-  estimateTokens(text: string): number {
+  static estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
   }
 
-  /**
-   * 메트릭 요약 문자열 생성
-   */
-  summarize(metrics: Metrics): string {
-    return `
-Files: ${metrics.fileCount} (${metrics.tsFileCount} TS, ${metrics.jsFileCount} JS)
-Core Files: ${metrics.coreFileCount}
-Changes: +${metrics.addedLines} -${metrics.deletedLines}
-Size: ${this.formatBytes(metrics.diffSize)}
-Estimated Tokens: ~${this.estimateTokens(metrics.diffSize.toString())}
-    `.trim();
-  }
-
-  /**
-   * 바이트를 읽기 쉬운 형식으로 변환
-   */
-  private formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
 }
-
-

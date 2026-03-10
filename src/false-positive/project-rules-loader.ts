@@ -4,7 +4,7 @@ import {
 } from "../core/types.js";
 import { logger } from "../utils/logger.js";
 import { BUILTIN_PATTERNS } from "./builtin-patterns.js";
-import { FrameworkRegistry } from "../frameworks/base-framework.js";
+import type { IFrameworkService } from "../frameworks/framework-service.js";
 
 /**
  * Project Rules Loader
@@ -12,6 +12,8 @@ import { FrameworkRegistry } from "../frameworks/base-framework.js";
  * 순수 함수 — 파일 I/O 없음.
  */
 export class ProjectRulesLoader {
+  constructor(private frameworkService: IFrameworkService) {}
+
   /**
    * FP 패턴 조합
    * @param frameworkName 감지된 프레임워크 이름
@@ -27,7 +29,7 @@ export class ProjectRulesLoader {
     let patterns = [...BUILTIN_PATTERNS];
 
     // 2. Add framework-specific patterns
-    const framework = FrameworkRegistry.get(frameworkName);
+    const framework = this.frameworkService.getFramework(frameworkName);
     if (framework) {
       const frameworkPatterns = framework.getFalsePositivePatterns();
       patterns = [...patterns, ...frameworkPatterns];

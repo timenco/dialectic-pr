@@ -26,7 +26,7 @@ export const STRATEGY_THRESHOLDS = {
 // Framework Detection
 // ============================================================================
 
-export type FrameworkName = "nestjs" | "nextjs" | "react" | "express" | "vanilla";
+export type FrameworkName = "nestjs" | "nextjs" | "react" | "express" | "fastapi" | "vanilla";
 
 export interface DetectedFramework {
   name: FrameworkName;
@@ -72,6 +72,8 @@ export interface ContextFlags {
   controllersChanged: boolean; // NestJS controllers
   criticalModule: boolean;
   configOnly: boolean;
+  /** 프레임워크별 추가 플래그 수용 */
+  [key: string]: boolean;
 }
 
 // ============================================================================
@@ -109,7 +111,6 @@ export type StrategyName = "small" | "medium" | "large" | "xlarge" | "skip";
 export interface ReviewStrategy {
   name: StrategyName;
   maxTokens: number;
-  contextTokenBudget: number; // 컨텍스트용 토큰 예산
   instructions: string; // 전략별 리뷰 지침
 }
 
@@ -196,7 +197,6 @@ export interface ReviewOptions {
   baseBranch: string;
   configPath?: string;
   dryRun?: boolean;
-  forceReview?: boolean;
   logLevel?: "debug" | "info" | "warn" | "error";
 }
 
@@ -223,7 +223,6 @@ export interface TokenUsage {
   outputTokens: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
-  totalCost: number; // USD 기준
 }
 
 export interface ClaudeResponse {
@@ -273,38 +272,6 @@ export interface GitHubPRInfo {
   repo: string;
   pullNumber: number;
   baseBranch: string;
-  headBranch: string;
-}
-
-export interface GitHubComment {
-  path: string;
-  position: number; // diff position
-  body: string;
-}
-
-export interface BatchReviewParams {
-  owner: string;
-  repo: string;
-  prNumber: number;
-  comments: GitHubComment[];
-  body: string;
-  event?: "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
-}
-
-// ============================================================================
-// CLI Options
-// ============================================================================
-
-export interface CLIOptions {
-  anthropicApiKey: string; // ANTHROPIC_API_KEY (필수)
-  githubToken: string; // GITHUB_TOKEN (필수)
-  owner: string; // PR owner
-  repo: string; // PR repo
-  pullNumber: number; // PR number
-  baseBranch: string; // 베이스 브랜치
-  configPath?: string; // 커스텀 설정 경로
-  dryRun?: boolean; // 테스트 모드
-  forceReview?: boolean; // 증분 리뷰 무시하고 전체 리뷰
 }
 
 // ============================================================================
