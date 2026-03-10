@@ -1,4 +1,5 @@
 import { ValidationError } from "../core/types.js";
+import { logger } from "../utils/logger.js";
 
 /**
  * Privacy Guard
@@ -18,7 +19,7 @@ export class PrivacyGuard {
    * 데이터 프라이버시 고지사항 출력
    */
   displayDisclaimer(): void {
-    console.log(`
+    logger.info(`
 ╔════════════════════════════════════════════════════════════════════╗
 ║  ⚠️  DATA PRIVACY NOTICE                                           ║
 ║                                                                    ║
@@ -58,24 +59,8 @@ export class PrivacyGuard {
    * 매칭된 내용의 안전한 미리보기 생성
    */
   private getPreview(match: string): string {
-    if (match.length <= 50) {
-      return match.substring(0, 30) + "...";
-    }
     return match.substring(0, 30) + "...";
   }
-
-  /**
-   * CI 환경인지 확인
-   */
-  isCIEnvironment(): boolean {
-    return !!(
-      process.env.CI ||
-      process.env.GITHUB_ACTIONS ||
-      process.env.GITLAB_CI ||
-      process.env.CIRCLECI
-    );
-  }
-
 }
 
 

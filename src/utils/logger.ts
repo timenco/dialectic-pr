@@ -49,30 +49,6 @@ class Logger {
   }
 
   /**
-   * 진행 상황 로그
-   */
-  progress(message: string, current: number, total: number): void {
-    if (this.shouldLog("info")) {
-      const percentage = Math.round((current / total) * 100);
-      console.log(`📊 [${current}/${total}] (${percentage}%) ${message}`);
-    }
-  }
-
-  /**
-   * 타이머 시작
-   */
-  time(label: string): void {
-    console.time(`⏱️  ${label}`);
-  }
-
-  /**
-   * 타이머 종료
-   */
-  timeEnd(label: string): void {
-    console.timeEnd(`⏱️  ${label}`);
-  }
-
-  /**
    * 섹션 헤더
    */
   section(title: string): void {

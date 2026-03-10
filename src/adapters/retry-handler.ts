@@ -12,15 +12,16 @@ export interface RetryOptions {
  * Exponential backoff를 사용한 재시도 로직
  */
 export class RetryHandler {
-  private readonly defaultOptions: RetryOptions = {
-    maxRetries: 3,
-    initialDelayMs: 1000,
-    maxDelayMs: 10000,
-    backoffMultiplier: 2,
-  };
+  private readonly config: RetryOptions;
 
-  constructor(private options: Partial<RetryOptions> = {}) {
-    this.options = { ...this.defaultOptions, ...options };
+  constructor(options: Partial<RetryOptions> = {}) {
+    this.config = {
+      maxRetries: 3,
+      initialDelayMs: 1000,
+      maxDelayMs: 10000,
+      backoffMultiplier: 2,
+      ...options,
+    };
   }
 
   /**
@@ -32,7 +33,7 @@ export class RetryHandler {
     fn: () => Promise<T>,
     retryableErrors?: number[]
   ): Promise<T> {
-    const maxRetries = this.options.maxRetries!;
+    const maxRetries = this.config.maxRetries;
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -79,8 +80,13 @@ export class RetryHandler {
    * 재시도 가능한 에러인지 확인
    */
   private isRetryableError(error: unknown, retryableCodes: number[]): boolean {
-    if (typeof error === "object" && error !== null && "statusCode" in error) {
-      return retryableCodes.includes((error as { statusCode: number }).statusCode);
+    if (typeof error === "object" && error !== null) {
+      const code =
+        ("statusCode" in error ? (error as { statusCode: number }).statusCode : undefined) ??
+        ("status" in error ? (error as { status: number }).status : undefined);
+      if (code !== undefined) {
+        return retryableCodes.includes(code);
+      }
     }
     return false;
   }
@@ -89,14 +95,9 @@ export class RetryHandler {
    * Exponential backoff 지연 시간 계산
    */
   private calculateDelay(attempt: number): number {
-    const {
-      initialDelayMs,
-      maxDelayMs,
-      backoffMultiplier,
-    } = this.options;
-
-    const delay = initialDelayMs! * Math.pow(backoffMultiplier!, attempt);
-    return Math.min(delay, maxDelayMs!);
+    const { initialDelayMs, maxDelayMs, backoffMultiplier } = this.config;
+    const delay = initialDelayMs * Math.pow(backoffMultiplier, attempt);
+    return Math.min(delay, maxDelayMs);
   }
 
   /**

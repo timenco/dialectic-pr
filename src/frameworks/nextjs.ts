@@ -1,5 +1,5 @@
-import { FalsePositivePattern, PriorityRule } from "../core/types.js";
-import { BaseFramework, FrameworkContextFlags } from "./base-framework.js";
+import { ContextFlags, FalsePositivePattern, PriorityRule } from "../core/types.js";
+import { BaseFramework } from "./base-framework.js";
 
 /**
  * Next.js Framework Implementation
@@ -44,7 +44,6 @@ COMMON_FALSE_POSITIVES:
 
   getFalsePositivePatterns(): FalsePositivePattern[] {
     return [
-      ...super.getFalsePositivePatterns(),
       {
         id: "nextjs-server-component-async",
         category: "validation",
@@ -62,15 +61,6 @@ COMMON_FALSE_POSITIVES:
         falsePositiveIndicators: [
           "use client is unnecessary",
           "should be server component",
-        ],
-      },
-      {
-        id: "nextjs-default-export",
-        category: "validation",
-        explanation: "Pages and layouts require default exports in Next.js",
-        falsePositiveIndicators: [
-          "prefer named exports",
-          "default export is anti-pattern",
         ],
       },
       {
@@ -176,6 +166,7 @@ COMMON_FALSE_POSITIVES:
   }
 
   isCriticalModule(filePath: string): boolean {
+    if (super.isCriticalModule(filePath)) return true;
     const nextjsCriticalPatterns = [
       /\/api\//,
       /route\.(ts|js)$/,
@@ -185,7 +176,7 @@ COMMON_FALSE_POSITIVES:
     return nextjsCriticalPatterns.some((p) => p.test(filePath));
   }
 
-  extractContextFlags(files: string[]): FrameworkContextFlags {
+  extractContextFlags(files: string[]): ContextFlags {
     const baseFlags = super.extractContextFlags(files);
     
     return {

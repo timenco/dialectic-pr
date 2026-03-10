@@ -38,7 +38,7 @@ describe("SmartFilter", () => {
       expect(result[0].priority).toBe("critical");
     });
 
-    it("should assign critical priority to controller files", () => {
+    it("should assign high priority to controller files in src/ (framework rules provide critical)", () => {
       const files: ChangedFile[] = [
         {
           path: "src/users/users.controller.ts",
@@ -49,11 +49,11 @@ describe("SmartFilter", () => {
       ];
 
       const result = filter.prioritizeFiles(files);
-      expect(result[0].priority).toBe("critical");
-      expect(result[0].reason).toContain("HTTP security layer");
+      expect(result[0].priority).toBe("high");
+      expect(result[0].reason).toContain("Source code");
     });
 
-    it("should assign high priority to service files", () => {
+    it("should assign high priority to service files in src/", () => {
       const files: ChangedFile[] = [
         {
           path: "src/users/users.service.ts",
@@ -65,7 +65,7 @@ describe("SmartFilter", () => {
 
       const result = filter.prioritizeFiles(files);
       expect(result[0].priority).toBe("high");
-      expect(result[0].reason).toContain("Business layer");
+      expect(result[0].reason).toContain("Source code");
     });
 
     it("should assign low priority to test files", () => {
@@ -81,6 +81,34 @@ describe("SmartFilter", () => {
       const result = filter.prioritizeFiles(files);
       expect(result[0].priority).toBe("low");
       expect(result[0].reason).toContain("Test file");
+    });
+
+    it("should let extraRules override default rules", () => {
+      const files: ChangedFile[] = [
+        {
+          path: "src/utils/helper.ts",
+          content: "helper code",
+          additions: 1,
+          deletions: 0,
+        },
+      ];
+
+      // Without extra rules: "high" (Source code)
+      const defaultResult = filter.prioritizeFiles(files);
+      expect(defaultResult[0].priority).toBe("high");
+
+      // With extra rule overriding to critical
+      const extraRules = [
+        { pattern: /\/utils\//, priority: "critical" as const, reason: "Custom critical" },
+      ];
+      const overrideResult = filter.prioritizeFiles(files, extraRules);
+      expect(overrideResult[0].priority).toBe("critical");
+      expect(overrideResult[0].reason).toBe("Custom critical");
+    });
+
+    it("should handle empty file list", () => {
+      const result = filter.prioritizeFiles([]);
+      expect(result).toEqual([]);
     });
 
     it("should sort files by priority", () => {

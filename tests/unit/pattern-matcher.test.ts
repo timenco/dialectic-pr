@@ -2,15 +2,11 @@ import { PatternMatcher } from "../../src/false-positive/pattern-matcher";
 import { FalsePositivePattern, ReviewIssue } from "../../src/core/types";
 
 describe("PatternMatcher", () => {
-  let matcher: PatternMatcher;
-
-  beforeEach(() => {
-    matcher = new PatternMatcher();
-  });
-
   describe("constructor", () => {
     it("should initialize with empty patterns", () => {
-      expect(matcher.patternCount).toBe(0);
+      const matcher = new PatternMatcher();
+      const stats = matcher.getPatternStats();
+      expect(stats.total).toBe(0);
     });
 
     it("should initialize with provided patterns", () => {
@@ -22,29 +18,9 @@ describe("PatternMatcher", () => {
           falsePositiveIndicators: ["test indicator"],
         },
       ];
-      const matcherWithPatterns = new PatternMatcher(patterns);
-      expect(matcherWithPatterns.patternCount).toBe(1);
-    });
-  });
-
-  describe("setPatterns", () => {
-    it("should set patterns", () => {
-      const patterns: FalsePositivePattern[] = [
-        {
-          id: "pattern-1",
-          category: "validation",
-          explanation: "Pattern 1",
-          falsePositiveIndicators: ["indicator 1"],
-        },
-        {
-          id: "pattern-2",
-          category: "error-handling",
-          explanation: "Pattern 2",
-          falsePositiveIndicators: ["indicator 2"],
-        },
-      ];
-      matcher.setPatterns(patterns);
-      expect(matcher.patternCount).toBe(2);
+      const matcher = new PatternMatcher(patterns);
+      const stats = matcher.getPatternStats();
+      expect(stats.total).toBe(1);
     });
   });
 
@@ -59,9 +35,7 @@ describe("PatternMatcher", () => {
       ],
     };
 
-    beforeEach(() => {
-      matcher.setPatterns([testPattern]);
-    });
+    const matcher = new PatternMatcher([testPattern]);
 
     it("should detect false positive when indicator matches", () => {
       const issue: ReviewIssue = {
@@ -111,16 +85,14 @@ describe("PatternMatcher", () => {
   });
 
   describe("filterIssues", () => {
-    beforeEach(() => {
-      matcher.setPatterns([
-        {
-          id: "console-log",
-          category: "logging",
-          explanation: "Console statements may be intentional",
-          falsePositiveIndicators: ["remove console.log", "use proper logger"],
-        },
-      ]);
-    });
+    const matcher = new PatternMatcher([
+      {
+        id: "console-log",
+        category: "logging",
+        explanation: "Console statements may be intentional",
+        falsePositiveIndicators: ["remove console.log", "use proper logger"],
+      },
+    ]);
 
     it("should filter out false positive issues", () => {
       const issues: ReviewIssue[] = [
@@ -173,7 +145,7 @@ describe("PatternMatcher", () => {
 
   describe("getPatternStats", () => {
     it("should return correct statistics", () => {
-      matcher.setPatterns([
+      const matcher = new PatternMatcher([
         {
           id: "p1",
           category: "validation",

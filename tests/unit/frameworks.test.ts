@@ -24,8 +24,8 @@ describe("Framework Implementations", () => {
       const patterns = framework.getFalsePositivePatterns();
       expect(patterns.length).toBeGreaterThan(0);
       const ids = patterns.map((p) => p.id);
-      expect(ids).toContain("nestjs-throw-error-with-filter");
-      expect(ids).toContain("nestjs-constructor-di");
+      expect(ids).toContain("nestjs-circular-dependency");
+      expect(ids).toContain("nestjs-decorator-return");
     });
 
     it("should detect affected areas", () => {
@@ -152,8 +152,8 @@ describe("Framework Implementations", () => {
     it("should return false positive patterns", () => {
       const patterns = framework.getFalsePositivePatterns();
       const ids = patterns.map((p) => p.id);
-      expect(ids).toContain("express-middleware-order");
       expect(ids).toContain("express-error-handler");
+      expect(ids).toContain("express-async-wrapper");
     });
 
     it("should detect affected areas", () => {
@@ -192,8 +192,8 @@ describe("Framework Implementations", () => {
     it("should return false positive patterns", () => {
       const patterns = framework.getFalsePositivePatterns();
       const ids = patterns.map((p) => p.id);
-      expect(ids).toContain("ts-any-intentional");
-      expect(ids).toContain("ts-type-assertion");
+      expect(ids).toContain("ts-empty-catch");
+      expect(ids).toContain("ts-console-cli");
     });
   });
 

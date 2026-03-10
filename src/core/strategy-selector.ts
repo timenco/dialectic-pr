@@ -10,34 +10,29 @@ export class StrategySelector {
     small: {
       name: "small",
       maxTokens: 16000,
-      contextTokenBudget: 4000,
       instructions: "Comprehensive review of all changes with detailed feedback.",
     },
     medium: {
       name: "medium",
       maxTokens: 12000,
-      contextTokenBudget: 3000,
       instructions:
         "Focus on critical issues and potential bugs. Skip minor style suggestions.",
     },
     large: {
       name: "large",
       maxTokens: 8000,
-      contextTokenBudget: 2000,
       instructions:
         "Focus only on critical security and bug issues. No style or minor suggestions.",
     },
     xlarge: {
       name: "xlarge",
       maxTokens: 4000,
-      contextTokenBudget: 1000,
       instructions:
         "Critical security issues only. Very large PR - recommend splitting.",
     },
     skip: {
       name: "skip",
       maxTokens: 0,
-      contextTokenBudget: 0,
       instructions: "PR is too large for meaningful review. Please split into smaller PRs.",
     },
   };
@@ -85,9 +80,6 @@ export class StrategySelector {
       strategy = {
         ...strategy,
         maxTokens: Math.floor(strategy.maxTokens * criticalBoost),
-        contextTokenBudget: Math.floor(
-          strategy.contextTokenBudget * criticalBoost
-        ),
       };
     }
 

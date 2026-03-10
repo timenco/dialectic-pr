@@ -56,7 +56,6 @@ program
   .command("review")
   .description("Review a Pull Request")
   .option("--dry-run", "Test mode without posting to GitHub")
-  .option("--force-review", "Force full review (ignore incremental)")
   .option("--config <path>", "Custom config file path")
   .option("--log-level <level>", "Log level (debug|info|warn|error)", "info")
   .action(async (options) => {
@@ -68,19 +67,19 @@ program
 
       process.exit(0);
     } catch (error) {
-      if (error instanceof ValidationError) {
-        logger.error(`❌ Validation Error: ${error.message}`);
-      } else {
-        logger.error(`❌ Review failed: ${safeError(error)}`);
-      }
-      process.exit(1);
+      handleReviewError(error);
     }
   });
 
 // 기본 명령어는 review
 program.action(async () => {
-  const reviewOptions = loadOptionsFromEnv({});
-  await runReview(reviewOptions);
+  try {
+    const reviewOptions = loadOptionsFromEnv({});
+    await runReview(reviewOptions);
+    process.exit(0);
+  } catch (error) {
+    handleReviewError(error);
+  }
 });
 
 program.parse();
@@ -166,7 +165,22 @@ jobs:
 /**
  * 환경변수에서 CLI 옵션 로드
  */
-function loadOptionsFromEnv(cmdOptions: Record<string, any>): ReviewOptions {
+function handleReviewError(error: unknown): never {
+  if (error instanceof ValidationError) {
+    logger.error(`❌ Validation Error: ${error.message}`);
+  } else {
+    logger.error(`❌ Review failed: ${safeError(error)}`);
+  }
+  process.exit(1);
+}
+
+interface CLIOptions {
+  config?: string;
+  dryRun?: boolean;
+  logLevel?: "debug" | "info" | "warn" | "error";
+}
+
+function loadOptionsFromEnv(cmdOptions: CLIOptions): ReviewOptions {
   const getEnvOrThrow = (key: string): string => {
     const value = process.env[key];
     if (!value) {
@@ -196,7 +210,6 @@ function loadOptionsFromEnv(cmdOptions: Record<string, any>): ReviewOptions {
     baseBranch: process.env.GITHUB_BASE_REF || "main",
     configPath: cmdOptions.config,
     dryRun: cmdOptions.dryRun || false,
-    forceReview: cmdOptions.forceReview || false,
     logLevel: cmdOptions.logLevel,
   };
 }

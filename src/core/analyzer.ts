@@ -1,15 +1,14 @@
 import {
   PRAnalysis,
   ChangedFile,
-  ContextFlags,
-  GitHubPRInfo,
-  CRITICAL_MODULE_PATTERN,
+  PrioritizedFile,
 } from "./types.js";
-import { isSchemaFile } from "../utils/file-classifier.js";
 import { ExcludeFilter } from "../security/exclude-filter.js";
 import { SmartFilter } from "./smart-filter.js";
 import { MetricsCalculator } from "../utils/metrics-calculator.js";
 import { FrameworkDetector } from "../frameworks/detector.js";
+import { isSourceFile } from "../utils/file-classifier.js";
+import type { IFrameworkService } from "../frameworks/framework-service.js";
 import { logger } from "../utils/logger.js";
 
 /**
@@ -17,25 +16,22 @@ import { logger } from "../utils/logger.js";
  * PR의 변경사항을 분석하고 메트릭 계산
  */
 export class PRAnalyzer {
-  private readonly metricsCalculator = new MetricsCalculator();
-
   constructor(
     private excludeFilter: ExcludeFilter,
     private smartFilter: SmartFilter,
-    private frameworkDetector: FrameworkDetector
+    private frameworkDetector: FrameworkDetector,
+    private frameworkService: IFrameworkService
   ) {}
 
   /**
    * PR 분석
    * @param diff PR diff 문자열
    * @param files 변경된 파일 정보
-   * @param prInfo PR 정보
    * @param repoPath 저장소 루트 경로
    */
   async analyze(
     diff: string,
     files: ChangedFile[],
-    prInfo: GitHubPRInfo,
     repoPath: string
   ): Promise<PRAnalysis> {
     logger.section("PR Analysis");
@@ -46,6 +42,10 @@ export class PRAnalyzer {
       files.map((f) => f.path)
     );
 
+    // 1b. Framework 인스턴스 획득
+    const frameworkInstance = this.frameworkService.getFramework(framework.name);
+    const frameworkRules = frameworkInstance?.getPriorityRules();
+
     // 2. 파일 필터링 (민감 파일 제외)
     const filteredFiles = this.filterFiles(files);
     logger.info(`📊 Files: ${files.length} total, ${filteredFiles.length} after filtering`);
@@ -54,22 +54,30 @@ export class PRAnalyzer {
     const relevantDiff = this.extractRelevantDiff(diff, filteredFiles);
 
     // 4. 메트릭 계산
-    const metrics = this.metricsCalculator.calculate(
+    const metrics = MetricsCalculator.calculate(
       relevantDiff,
       filteredFiles.map((f) => f.path)
     );
 
-    // 5. 컨텍스트 플래그 감지
-    const flags = this.detectContextFlags(filteredFiles, framework.name);
+    const filePaths = filteredFiles.map((f) => f.path);
 
-    // 6. 영향받는 영역 감지
-    const affectedAreas = this.detectAffectedAreas(
-      filteredFiles.map((f) => f.path),
-      framework.name
-    );
+    // 5. 컨텍스트 플래그 감지 — Framework 위임
+    const flags = frameworkInstance
+      ? frameworkInstance.extractContextFlags(filePaths)
+      : {
+          testChanged: false,
+          schemaChanged: false,
+          apiRoutesChanged: false,
+          controllersChanged: false,
+          criticalModule: false,
+          configOnly: false,
+        };
+
+    // 6. 영향받는 영역 감지 — Framework 위임
+    const affectedAreas = frameworkInstance?.detectAffectedAreas(filePaths) ?? [];
 
     // 7. 파일 우선순위 지정
-    const prioritizedFiles = this.smartFilter.prioritizeFiles(filteredFiles);
+    const prioritizedFiles = this.smartFilter.prioritizeFiles(filteredFiles, frameworkRules);
 
     // 8. 우선순위 정렬된 diff 생성
     const prioritizedDiff = this.buildPrioritizedDiff(prioritizedFiles);
@@ -112,7 +120,7 @@ export class PRAnalyzer {
   private extractRelevantDiff(diff: string, files: ChangedFile[]): string {
     // 소스 파일 경로 목록
     const sourcePaths = files
-      .filter((f) => this.excludeFilter.isSourceFile(f.path))
+      .filter((f) => isSourceFile(f.path))
       .map((f) => f.path);
 
     // diff를 파일별로 분리
@@ -138,7 +146,7 @@ export class PRAnalyzer {
   /**
    * 우선순위 정렬된 diff 생성
    */
-  private buildPrioritizedDiff(files: typeof this.smartFilter.prioritizeFiles extends (files: any) => infer R ? R : never): string {
+  private buildPrioritizedDiff(files: PrioritizedFile[]): string {
     const diffBlocks: string[] = [];
 
     for (const file of files) {
@@ -151,101 +159,6 @@ ${file.content}
     }
 
     return diffBlocks.join("\n\n" + "=".repeat(80) + "\n\n");
-  }
-
-  /**
-   * 컨텍스트 플래그 감지
-   */
-  private detectContextFlags(
-    files: ChangedFile[],
-    frameworkName: string
-  ): ContextFlags {
-    const paths = files.map((f) => f.path);
-
-    return {
-      testChanged: paths.some((p) => this.excludeFilter.isTestFile(p)),
-      schemaChanged: paths.some((p) => isSchemaFile(p)),
-      apiRoutesChanged:
-        frameworkName === "nextjs" &&
-        paths.some((p) => p.includes("/api/")),
-      controllersChanged:
-        frameworkName === "nestjs" &&
-        paths.some((p) => p.includes(".controller.ts")),
-      criticalModule: paths.some((p) => CRITICAL_MODULE_PATTERN.test(p)),
-      configOnly: paths.every((p) => this.excludeFilter.isConfigFile(p)),
-    };
-  }
-
-  /**
-   * 영향받는 영역 감지
-   */
-  detectAffectedAreas(files: string[], frameworkName: string): string[] {
-    const areas: string[] = [];
-
-    // 공통 영역
-    if (files.some((f) => f.includes("/auth/"))) {
-      areas.push("🔐 Auth");
-    }
-    if (files.some((f) => f.includes("/payments/"))) {
-      areas.push("💳 Payments");
-    }
-    if (files.some((f) => f.includes("/billing/"))) {
-      areas.push("💰 Billing");
-    }
-
-    // 프레임워크별 영역
-    if (frameworkName === "nestjs") {
-      if (files.some((f) => f.match(/\.(controller|guard|interceptor)\.ts$/))) {
-        areas.push("🎯 HTTP Layer");
-      }
-      if (files.some((f) => f.match(/\.(service|repository)\.ts$/))) {
-        areas.push("⚙️ Business Logic");
-      }
-      if (files.some((f) => f.includes(".entity.ts"))) {
-        areas.push("🗄️ Database Schema");
-      }
-    } else if (frameworkName === "nextjs") {
-      if (files.some((f) => f.includes("/api/"))) {
-        areas.push("🔌 API Routes");
-      }
-      if (files.some((f) => f.includes("page.tsx"))) {
-        areas.push("📄 Pages");
-      }
-      if (files.some((f) => f.includes("layout.tsx"))) {
-        areas.push("🎨 Layouts");
-      }
-    } else if (frameworkName === "react") {
-      if (files.some((f) => f.includes("/components/"))) {
-        areas.push("🧩 Components");
-      }
-      if (files.some((f) => f.includes("/hooks/"))) {
-        areas.push("🪝 Hooks");
-      }
-      if (files.some((f) => f.includes("/store/") || f.includes("/redux/"))) {
-        areas.push("📦 State Management");
-      }
-    }
-
-    // 테스트
-    if (files.some((f) => this.excludeFilter.isTestFile(f))) {
-      areas.push("🧪 Tests");
-    }
-
-    return areas;
-  }
-
-  /**
-   * Config-only 변경인지 확인
-   */
-  isConfigOnly(files: string[]): boolean {
-    return files.every((f) => this.excludeFilter.isConfigFile(f));
-  }
-
-  /**
-   * Critical 모듈 변경인지 확인
-   */
-  isCriticalModule(files: string[]): boolean {
-    return files.some((f) => CRITICAL_MODULE_PATTERN.test(f));
   }
 
   /**

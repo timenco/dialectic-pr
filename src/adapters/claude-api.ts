@@ -16,7 +16,6 @@ import { logger } from "../utils/logger.js";
 export class ClaudeAdapter {
   private readonly client: Anthropic;
   private readonly retryHandler: RetryHandler;
-  private readonly defaultModel = DEFAULT_MODEL;
 
   constructor(
     private apiKey: string,
@@ -41,7 +40,7 @@ export class ClaudeAdapter {
     userMessage: string,
     options: AdvancedClaudeOptions
   ): Promise<ClaudeResponse> {
-    const model = options.model || this.model || this.defaultModel;
+    const model = options.model || this.model || DEFAULT_MODEL;
 
     logger.info(`🤖 Sending request to Claude (${model})...`);
     logger.debug(`User message length: ${userMessage.length} chars`);
@@ -99,7 +98,6 @@ export class ClaudeAdapter {
           outputTokens: usageData.output_tokens,
           cacheCreationTokens: usageData.cache_creation_input_tokens || 0,
           cacheReadTokens: usageData.cache_read_input_tokens || 0,
-          totalCost: 0,
         };
 
         logger.success(`✅ Received response from Claude`);
@@ -128,12 +126,5 @@ export class ClaudeAdapter {
         throw error;
       }
     }, [429, 500, 502, 503, 504]);
-  }
-
-  /**
-   * 현재 사용 중인 모델 확인
-   */
-  getModel(): string {
-    return this.model || this.defaultModel;
   }
 }

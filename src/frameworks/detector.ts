@@ -9,6 +9,10 @@ interface PackageJson {
   devDependencies?: Record<string, string>;
 }
 
+interface PythonRequirements {
+  packages: string[];
+}
+
 /**
  * Framework Detector
  * package.json과 파일 구조를 분석하여 프레임워크 자동 감지
@@ -47,10 +51,23 @@ export class FrameworkDetector {
       return { name: "react", confidence: "high", version };
     }
 
-    if (this.isExpress(packageJson, files)) {
+    if (this.isExpress(packageJson)) {
       const version = this.getVersion(packageJson, "express");
       logger.success(`✅ Detected: Express ${version || "unknown"}`);
       return { name: "express", confidence: "medium", version };
+    }
+
+    // 2.5. Python 프레임워크 감지 (JS 프레임워크 미감지 시)
+    const hasPythonFiles = files.some((f) => f.endsWith(".py"));
+    if (hasPythonFiles) {
+      const pythonReqs = await this.readPythonRequirements(rootPath);
+      if (this.isFastAPI(pythonReqs)) {
+        logger.success("✅ Detected: FastAPI (Python)");
+        return { name: "fastapi", confidence: "high" };
+      }
+      // Python 프로젝트이지만 FastAPI가 아닌 경우 vanilla fallback
+      logger.info("ℹ️  Python project detected, but not FastAPI. Using vanilla.");
+      return { name: "vanilla", confidence: "medium" };
     }
 
     // 3. 기본값: vanilla TypeScript/JavaScript
@@ -149,7 +166,7 @@ export class FrameworkDetector {
   /**
    * Express 감지
    */
-  private isExpress(pkg: PackageJson, _files: string[]): boolean {
+  private isExpress(pkg: PackageJson): boolean {
     // package.json에 express 의존성 확인
     if (this.hasDependency(pkg, "express")) {
       return true;
@@ -157,6 +174,84 @@ export class FrameworkDetector {
 
     // 파일 내용까지 확인하려면 비용이 크므로 의존성만 확인
     return false;
+  }
+
+  /**
+   * Python requirements 읽기 (requirements.txt + pyproject.toml)
+   */
+  private async readPythonRequirements(rootPath: string): Promise<PythonRequirements> {
+    const packages: string[] = [];
+
+    // requirements.txt 파싱
+    const reqPath = join(rootPath, "requirements.txt");
+    if (existsSync(reqPath)) {
+      try {
+        const content = await readFile(reqPath, "utf-8");
+        for (const line of content.split("\n")) {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("-")) {
+            // "fastapi>=0.100.0" → "fastapi"
+            const pkgName = trimmed.split(/[>=<!\[;]/)[0].trim().toLowerCase();
+            if (pkgName) packages.push(pkgName);
+          }
+        }
+      } catch (error) {
+        logger.warn(`⚠️ Failed to read requirements.txt: ${safeError(error)}`);
+      }
+    }
+
+    // pyproject.toml 간단 파싱
+    const pyprojectPath = join(rootPath, "pyproject.toml");
+    if (existsSync(pyprojectPath)) {
+      try {
+        const content = await readFile(pyprojectPath, "utf-8");
+        this.parsePyprojectToml(content, packages);
+      } catch (error) {
+        logger.warn(`⚠️ Failed to read pyproject.toml: ${safeError(error)}`);
+      }
+    }
+
+    return { packages };
+  }
+
+  /**
+   * pyproject.toml에서 dependencies 추출
+   * [project] dependencies 배열 또는 [tool.poetry.dependencies] 섹션만 파싱
+   */
+  private parsePyprojectToml(content: string, packages: string[]): void {
+    // 1. PEP 621: [project] dependencies = ["fastapi>=0.100", ...]
+    const pep621Match = content.match(
+      /\[project\][^[]*?dependencies\s*=\s*\[([\s\S]*?)\]/
+    );
+    if (pep621Match) {
+      const entries = pep621Match[1].matchAll(/"([a-zA-Z0-9_-]+)/g);
+      for (const m of entries) {
+        const pkg = m[1].toLowerCase();
+        if (pkg && !packages.includes(pkg)) packages.push(pkg);
+      }
+    }
+
+    // 2. Poetry: [tool.poetry.dependencies] 섹션의 키
+    const poetryMatch = content.match(
+      /\[tool\.poetry\.dependencies\]([\s\S]*?)(?:\n\[|$)/
+    );
+    if (poetryMatch) {
+      const lines = poetryMatch[1].split("\n");
+      for (const line of lines) {
+        const kv = line.match(/^([a-zA-Z0-9_-]+)\s*=/);
+        if (kv) {
+          const pkg = kv[1].toLowerCase();
+          if (pkg !== "python" && !packages.includes(pkg)) packages.push(pkg);
+        }
+      }
+    }
+  }
+
+  /**
+   * FastAPI 프로젝트 여부 확인
+   */
+  private isFastAPI(reqs: PythonRequirements): boolean {
+    return reqs.packages.includes("fastapi");
   }
 
   /**
@@ -184,25 +279,4 @@ export class FrameworkDetector {
     return version.replace(/^[\^~>=<]+/, "");
   }
 
-  /**
-   * 프레임워크 신뢰도 평가
-   */
-  getConfidenceReason(framework: DetectedFramework): string {
-    switch (framework.name) {
-      case "nestjs":
-        return "@nestjs/core dependency found in package.json";
-      case "nextjs":
-        return "next dependency found in package.json";
-      case "react":
-        return "react dependency found in package.json";
-      case "express":
-        return "express dependency found in package.json (medium confidence)";
-      case "vanilla":
-        return "No framework-specific patterns detected";
-      default:
-        return "Unknown";
-    }
-  }
 }
-
-

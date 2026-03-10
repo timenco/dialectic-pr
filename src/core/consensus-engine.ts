@@ -3,11 +3,9 @@ import {
   ReviewStrategy,
   FalsePositivePattern,
   ReviewResult,
-  ReviewIssue,
   ReviewSummary,
   ReviewMetadata,
   CachedSystemMessage,
-  FrameworkName,
   CodeReviewResponse,
 } from "./types.js";
 import { ClaudeAdapter } from "../adapters/claude-api.js";
@@ -91,106 +89,6 @@ RULES:
 `.trim();
 
 /**
- * Framework-specific instructions (cacheable - changes per project)
- */
-const FRAMEWORK_INSTRUCTIONS: Record<FrameworkName, string> = {
-  nestjs: `
-FRAMEWORK: NestJS
-BEST_PRACTICES:
-  dependency_injection:
-    - use_constructor_injection: true
-    - avoid_property_injection: true
-  error_handling:
-    - use_exception_filters: true
-    - throw_http_exceptions: true
-  validation:
-    - use_class_validator_dtos: true
-  architecture:
-    - avoid_circular_dependencies: true
-    - single_responsibility_modules: true
-COMMON_FALSE_POSITIVES:
-  - "throw new Error" is acceptable with AllExceptionsFilter
-  - "new" keyword is intentional for DTOs and entities
-  - Logger dependency injection is project pattern
-`.trim(),
-
-  nextjs: `
-FRAMEWORK: Next.js
-BEST_PRACTICES:
-  components:
-    - prefer_server_components: true
-    - mark_client_components_explicitly: true
-  data_fetching:
-    - use_async_server_components: true
-    - avoid_useeffect_for_data: true
-  api_routes:
-    - validate_all_input: true
-    - use_proper_http_status_codes: true
-  optimization:
-    - use_next_image: true
-    - check_client_js_bundle_size: true
-COMMON_FALSE_POSITIVES:
-  - async Server Components without useEffect is correct
-  - "use client" directive is intentional marking
-`.trim(),
-
-  react: `
-FRAMEWORK: React
-BEST_PRACTICES:
-  hooks:
-    - follow_rules_of_hooks: true
-    - include_all_dependencies: true
-    - cleanup_effects: true
-  performance:
-    - use_memo_appropriately: true
-    - use_callback_for_child_optimization: true
-  state:
-    - colocate_state: true
-    - lift_when_needed: true
-  lists:
-    - stable_unique_keys: true
-COMMON_FALSE_POSITIVES:
-  - intentional dependency omissions with eslint-disable
-  - memo usage is performance optimization
-`.trim(),
-
-  express: `
-FRAMEWORK: Express
-BEST_PRACTICES:
-  middleware:
-    - correct_order: true
-    - error_handlers_last: true
-  async_handling:
-    - use_async_await_with_try_catch: true
-    - or_use_error_middleware: true
-  validation:
-    - validate_all_user_input: true
-  security:
-    - use_helmet: true
-    - implement_rate_limiting: true
-  routing:
-    - use_router_for_modular_routes: true
-COMMON_FALSE_POSITIVES:
-  - middleware order is intentional architecture
-  - custom error handler is standard pattern
-`.trim(),
-
-  vanilla: `
-FRAMEWORK: TypeScript/JavaScript
-BEST_PRACTICES:
-  types:
-    - avoid_any: true
-    - use_proper_types: true
-  async:
-    - handle_promise_rejections: true
-  errors:
-    - throw_typed_errors: true
-  null_safety:
-    - check_null_undefined: true
-`.trim(),
-};
-
-/**
  * Consensus Engine
  * Single-Call Multi-Persona Consensus Review with Prompt Caching
  */
@@ -210,7 +108,8 @@ export class ConsensusEngine {
   async generateReview(
     analysis: PRAnalysis,
     strategy: ReviewStrategy,
-    fpPatterns: FalsePositivePattern[]
+    fpPatterns: FalsePositivePattern[],
+    frameworkInstructions?: string
   ): Promise<ReviewResult> {
     logger.section("Generating Review");
 
@@ -218,8 +117,8 @@ export class ConsensusEngine {
 
     // 1. Build cacheable system messages
     const systemMessages = this.buildSystemMessages(
-      analysis.context.framework.name,
-      fpPatterns
+      fpPatterns,
+      frameworkInstructions
     );
 
     // 2. Build dynamic user message
@@ -236,7 +135,7 @@ export class ConsensusEngine {
     const parsed = this.parseReviewResponse(response.text);
 
     // 5. Generate summary
-    const summary = this.generateSummary(parsed.issues, analysis, parsed.consensus);
+    const summary = this.generateSummary(analysis, parsed.consensus);
 
     // 6. Build metadata
     const metadata: ReviewMetadata = {
@@ -250,7 +149,6 @@ export class ConsensusEngine {
 
     logger.success(`✅ Review generated with ${parsed.issues.length} issues`);
     logger.info(`⏱️  Duration: ${metadata.reviewDuration}ms`);
-    logger.info(`💰 Cost: $${response.usage.totalCost.toFixed(4)}`);
 
     return {
       issues: parsed.issues,
@@ -265,8 +163,8 @@ export class ConsensusEngine {
    * These messages are cached by Claude API to reduce cost and latency
    */
   private buildSystemMessages(
-    frameworkName: FrameworkName,
-    fpPatterns: FalsePositivePattern[]
+    fpPatterns: FalsePositivePattern[],
+    frameworkInstructions?: string
   ): CachedSystemMessage[] {
     const messages: CachedSystemMessage[] = [
       // 1. Agent consensus instructions (never changes, always cached)
@@ -281,10 +179,10 @@ export class ConsensusEngine {
         text: this.formatFPPatterns(fpPatterns),
         cache_control: { type: "ephemeral" },
       },
-      // 3. Framework instructions (changes per project, cached per session)
+      // 3. Framework instructions (from Framework instance)
       {
         type: "text",
-        text: FRAMEWORK_INSTRUCTIONS[frameworkName] || FRAMEWORK_INSTRUCTIONS.vanilla,
+        text: frameworkInstructions || "FRAMEWORK: generic\nNo specific framework best practices.",
         cache_control: { type: "ephemeral" },
       },
     ];
@@ -483,7 +381,6 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
    * Generate review summary
    */
   private generateSummary(
-    _issues: ReviewIssue[],
     analysis: PRAnalysis,
     consensus: CodeReviewResponse["consensus"]
   ): ReviewSummary {
@@ -511,19 +408,5 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
       priority: consensus.priority,
       fpRate: consensus.fpRate,
     };
-  }
-
-  /**
-   * Get framework instructions for external use
-   */
-  static getFrameworkInstructions(frameworkName: FrameworkName): string {
-    return FRAMEWORK_INSTRUCTIONS[frameworkName] || FRAMEWORK_INSTRUCTIONS.vanilla;
-  }
-
-  /**
-   * Get agent consensus instructions for external use
-   */
-  static getAgentInstructions(): string {
-    return AGENT_CONSENSUS_INSTRUCTIONS;
   }
 }

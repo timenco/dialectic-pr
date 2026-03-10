@@ -13,9 +13,7 @@ import { MetricsCalculator } from "../utils/metrics-calculator.js";
  * 핵심 파일 우선순위 큐 관리 및 토큰 제한 내 파일 선택
  */
 export class SmartFilter {
-  private readonly metricsCalculator = new MetricsCalculator();
-
-  private readonly defaultPriorityRules: PriorityRule[] = [
+  static readonly DEFAULT_RULES: PriorityRule[] = [
     // Critical: 핵심 비즈니스 로직 및 보안
     {
       pattern: new RegExp(`src\\/${CRITICAL_MODULE_PATH}\\/`),
@@ -26,11 +24,6 @@ export class SmartFilter {
       pattern: /src\/core\//,
       priority: "critical",
       reason: "Core business logic",
-    },
-    {
-      pattern: /\.(controller|guard|middleware)\.ts$/,
-      priority: "critical",
-      reason: "HTTP security layer",
     },
 
     // Low: 낮은 우선순위 (먼저 체크하여 테스트 파일이 high로 매칭되지 않도록)
@@ -50,17 +43,7 @@ export class SmartFilter {
       reason: "Config/Doc file",
     },
 
-    // High: 중요 소스 코드 (구체적인 패턴 먼저)
-    {
-      pattern: /\.(service|repository|handler)\.(ts|js)$/,
-      priority: "high",
-      reason: "Business layer",
-    },
-    {
-      pattern: /\.entity\.ts$/,
-      priority: "high",
-      reason: "Database schema",
-    },
+    // High: 범용 소스 코드
     {
       pattern: /src\/.*\.(ts|tsx|js|jsx|py|java|go)$/,
       priority: "high",
@@ -75,22 +58,27 @@ export class SmartFilter {
     },
   ];
 
-  constructor(private customRules: PriorityRule[] = []) {}
-
   /**
    * 파일 우선순위 지정 및 정렬
    * @param files 변경된 파일 목록
+   * @param extraRules 추가 우선순위 룰 (최우선 적용)
    */
-  prioritizeFiles(files: ChangedFile[]): PrioritizedFile[] {
-    const allRules = [...this.defaultPriorityRules, ...this.customRules];
+  prioritizeFiles(files: ChangedFile[], extraRules?: PriorityRule[]): PrioritizedFile[] {
+    const allRules = [
+      ...(extraRules || []),
+      ...SmartFilter.DEFAULT_RULES,
+    ];
 
     return files
-      .map((file) => ({
-        path: file.path,
-        content: file.content,
-        priority: this.determinePriority(file.path, allRules),
-        reason: this.getPriorityReason(file.path, allRules),
-      }))
+      .map((file) => {
+        const match = this.findMatchingRule(file.path, allRules);
+        return {
+          path: file.path,
+          content: file.content,
+          priority: match.priority,
+          reason: match.reason,
+        };
+      })
       .sort(
         (a, b) =>
           this.priorityOrder(a.priority) - this.priorityOrder(b.priority)
@@ -111,7 +99,7 @@ export class SmartFilter {
     let currentTokens = 0;
 
     for (const file of prioritizedFiles) {
-      const fileTokens = this.metricsCalculator.estimateTokens(file.content);
+      const fileTokens = MetricsCalculator.estimateTokens(file.content);
 
       if (currentTokens + fileTokens <= tokenLimit) {
         included.push(file);
@@ -143,33 +131,18 @@ export class SmartFilter {
   }
 
   /**
-   * 파일 우선순위 결정
+   * 첫 번째 매칭 룰 탐색 (priority + reason 동시 반환)
    */
-  private determinePriority(
+  private findMatchingRule(
     filePath: string,
     rules: PriorityRule[]
-  ): FilePriority {
-    // 첫 번째 매칭되는 룰의 우선순위 반환
+  ): { priority: FilePriority; reason: string } {
     for (const rule of rules) {
       if (this.matchesPattern(filePath, rule.pattern)) {
-        return rule.priority;
+        return { priority: rule.priority, reason: rule.reason };
       }
     }
-
-    return "low"; // 기본값
-  }
-
-  /**
-   * 우선순위 결정 이유
-   */
-  private getPriorityReason(filePath: string, rules: PriorityRule[]): string {
-    for (const rule of rules) {
-      if (this.matchesPattern(filePath, rule.pattern)) {
-        return rule.reason;
-      }
-    }
-
-    return "Unknown file type";
+    return { priority: "low", reason: "Unknown file type" };
   }
 
   /**
@@ -208,12 +181,4 @@ export class SmartFilter {
     return stats;
   }
 
-  /**
-   * 추가 우선순위 룰 설정
-   */
-  addCustomRules(rules: PriorityRule[]): void {
-    this.customRules.push(...rules);
-  }
 }
-
-
