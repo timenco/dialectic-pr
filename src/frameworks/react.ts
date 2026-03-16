@@ -12,20 +12,37 @@ export class ReactFramework extends BaseFramework {
     return `
 FRAMEWORK: React
 BEST_PRACTICES:
+  waterfalls_and_async: [CRITICAL]
+    - defer_await_until_needed: true
+    - parallelize_independent_operations: true
+  bundle_size: [CRITICAL]
+    - avoid_barrel_file_imports: true
+    - dynamic_imports_for_heavy_components: true
   hooks:
     - follow_rules_of_hooks: true
     - include_all_dependencies: true
     - cleanup_effects: true
     - avoid_unnecessary_effects: true
+    - narrow_effect_dependencies: true
+    - interaction_logic_in_event_handlers: true
   performance:
     - use_memo_appropriately: true
     - use_callback_for_child_optimization: true
     - avoid_inline_object_creation_in_render: true
+    - dont_define_components_inside_components: true
+    - use_functional_setState: true
+    - use_lazy_state_initialization: true
+    - use_transitions_for_non_urgent_updates: true
     - use_virtualization_for_long_lists: true
+  rendering:
+    - hoist_static_jsx_outside_component: true
+    - use_explicit_conditional_rendering: true
+    - prevent_hydration_mismatch: true
   state:
     - colocate_state: true
     - lift_when_needed: true
     - avoid_prop_drilling_with_context: true
+    - calculate_derived_state_during_render: true
   lists:
     - stable_unique_keys: true
     - avoid_index_as_key_for_dynamic_lists: true
@@ -33,12 +50,19 @@ BEST_PRACTICES:
     - prefer_composition_over_inheritance: true
     - single_responsibility: true
     - controlled_vs_uncontrolled: be_consistent
+  js_performance:
+    - use_set_map_for_O1_lookups: true
+    - avoid_layout_thrashing: true
+    - hoist_regexp_creation: true
 COMMON_FALSE_POSITIVES:
   - intentional dependency omissions with eslint-disable
   - memo usage is performance optimization
   - empty dependency array for mount-only effects is correct
   - useCallback for event handlers passed to children is valid
   - index as key is acceptable for static lists
+  - simple expressions do not need useMemo
+  - internal module barrel imports have minimal impact
+  - deriving state during render is correct pattern
 `.trim();
   }
 
@@ -80,6 +104,36 @@ COMMON_FALSE_POSITIVES:
         falsePositiveIndicators: [
           "remove eslint-disable",
           "fix dependency array",
+        ],
+      },
+      {
+        id: "react-simple-usememo",
+        category: "performance",
+        explanation: "Simple expressions (primitives, short calculations) do not need useMemo wrapping",
+        falsePositiveIndicators: [
+          "wrap in useMemo",
+          "memoize this value",
+          "should use useMemo",
+        ],
+      },
+      {
+        id: "react-barrel-import-internal",
+        category: "performance",
+        explanation: "Barrel imports from internal modules have minimal bundle impact when tree-shaking is configured",
+        falsePositiveIndicators: [
+          "barrel import increases bundle",
+          "import from barrel file",
+          "re-export causes larger bundle",
+        ],
+      },
+      {
+        id: "react-derived-state",
+        category: "validation",
+        explanation: "Calculating derived state during render is the correct React pattern instead of using useEffect to sync state",
+        falsePositiveIndicators: [
+          "derive state in useEffect",
+          "should store derived value in state",
+          "missing state update for derived value",
         ],
       },
     ];
