@@ -342,7 +342,7 @@ export const BUILTIN_PATTERNS: FalsePositivePattern[] = [
     id: "react-component-inside-component",
     category: "performance",
     explanation:
-      "Defining components inside other components causes remount on every render, destroying state and DOM",
+      "Flagging components defined inside other components is correct — this causes remount on every render, destroying state and DOM",
     falsePositiveIndicators: [
       "nested component is fine",
       "inner component is simple",
@@ -353,7 +353,7 @@ export const BUILTIN_PATTERNS: FalsePositivePattern[] = [
     id: "react-barrel-import",
     category: "performance",
     explanation:
-      "Barrel file imports (index.ts re-exports) can pull in unused modules and increase bundle size",
+      "Barrel file imports (index.ts re-exports) from external/third-party packages can pull in unused modules and increase bundle size",
     falsePositiveIndicators: [
       "barrel import is convenient",
       "re-export is fine for organization",
