@@ -147,6 +147,20 @@ describe("Builtin Patterns", () => {
     });
   });
 
+  describe("React Vercel best practices patterns", () => {
+    it("should include component-inside-component pattern", () => {
+      const pattern = getPatternById("react-component-inside-component");
+      expect(pattern).toBeDefined();
+      expect(pattern?.category).toBe("performance");
+    });
+
+    it("should include barrel import pattern", () => {
+      const pattern = getPatternById("react-barrel-import");
+      expect(pattern).toBeDefined();
+      expect(pattern?.category).toBe("performance");
+    });
+  });
+
   describe("Next.js-specific patterns", () => {
     it("should include server component pattern", () => {
       const pattern = getPatternById("nextjs-server-component");
@@ -158,6 +172,20 @@ describe("Builtin Patterns", () => {
       const pattern = getPatternById("nextjs-use-client");
       expect(pattern).toBeDefined();
       expect(pattern?.explanation).toContain("use client");
+    });
+  });
+
+  describe("Next.js Vercel best practices patterns", () => {
+    it("should include suspense boundary pattern", () => {
+      const pattern = getPatternById("nextjs-suspense-boundary");
+      expect(pattern).toBeDefined();
+      expect(pattern?.category).toBe("validation");
+    });
+
+    it("should include RSC serialization pattern", () => {
+      const pattern = getPatternById("nextjs-rsc-serialization");
+      expect(pattern).toBeDefined();
+      expect(pattern?.category).toBe("performance");
     });
   });
 

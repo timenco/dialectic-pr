@@ -338,6 +338,28 @@ export const BUILTIN_PATTERNS: FalsePositivePattern[] = [
       "fix the underlying issue",
     ],
   },
+  {
+    id: "react-component-inside-component",
+    category: "performance",
+    explanation:
+      "Flagging components defined inside other components is correct — this causes remount on every render, destroying state and DOM",
+    falsePositiveIndicators: [
+      "nested component is fine",
+      "inner component is simple",
+      "component definition inside render",
+    ],
+  },
+  {
+    id: "react-barrel-import",
+    category: "performance",
+    explanation:
+      "Barrel file imports (index.ts re-exports) from external/third-party packages can pull in unused modules and increase bundle size",
+    falsePositiveIndicators: [
+      "barrel import is convenient",
+      "re-export is fine for organization",
+      "index import is standard",
+    ],
+  },
 
   // ============================================================================
   // Next.js Specific
@@ -370,6 +392,28 @@ export const BUILTIN_PATTERNS: FalsePositivePattern[] = [
     falsePositiveIndicators: [
       "prefer named exports",
       "default export anti-pattern",
+    ],
+  },
+  {
+    id: "nextjs-suspense-boundary",
+    category: "validation",
+    explanation:
+      "Strategic Suspense boundaries enable streaming and parallel loading of independent UI sections",
+    falsePositiveIndicators: [
+      "unnecessary Suspense",
+      "Suspense is overkill",
+      "remove Suspense wrapper",
+    ],
+  },
+  {
+    id: "nextjs-rsc-serialization",
+    category: "performance",
+    explanation:
+      "Minimizing props at RSC boundaries reduces serialization overhead between server and client components",
+    falsePositiveIndicators: [
+      "pass full object to client",
+      "props should include all data",
+      "unnecessary prop splitting",
     ],
   },
 

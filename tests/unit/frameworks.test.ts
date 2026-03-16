@@ -75,11 +75,38 @@ describe("Framework Implementations", () => {
       expect(instructions).toContain("api_routes");
     });
 
+    it("should include server performance rules", () => {
+      const instructions = framework.getReviewInstructions();
+      expect(instructions).toContain("server_performance");
+      expect(instructions).toContain("authenticate_server_actions");
+      expect(instructions).toContain("minimize_serialization_at_rsc_boundaries");
+    });
+
+    it("should include caching rules", () => {
+      const instructions = framework.getReviewInstructions();
+      expect(instructions).toContain("caching");
+      expect(instructions).toContain("hoist_static_io_to_module_level");
+      expect(instructions).toContain("cross_request_lru_caching");
+    });
+
+    it("should include CRITICAL tags", () => {
+      const instructions = framework.getReviewInstructions();
+      expect(instructions).toContain("[CRITICAL]");
+    });
+
     it("should return false positive patterns", () => {
       const patterns = framework.getFalsePositivePatterns();
       const ids = patterns.map((p) => p.id);
       expect(ids).toContain("nextjs-server-component-async");
       expect(ids).toContain("nextjs-use-client-directive");
+    });
+
+    it("should include new false positive patterns", () => {
+      const patterns = framework.getFalsePositivePatterns();
+      const ids = patterns.map((p) => p.id);
+      expect(ids).toContain("nextjs-react-cache-dedup");
+      expect(ids).toContain("nextjs-after-non-blocking");
+      expect(ids).toContain("nextjs-server-action-auth");
     });
 
     it("should detect affected areas", () => {
@@ -115,11 +142,46 @@ describe("Framework Implementations", () => {
       expect(instructions).toContain("state");
     });
 
+    it("should include waterfall prevention rules", () => {
+      const instructions = framework.getReviewInstructions();
+      expect(instructions).toContain("waterfalls_and_async");
+      expect(instructions).toContain("defer_await_until_needed");
+      expect(instructions).toContain("parallelize_independent_operations");
+    });
+
+    it("should include bundle size rules", () => {
+      const instructions = framework.getReviewInstructions();
+      expect(instructions).toContain("bundle_size");
+      expect(instructions).toContain("avoid_barrel_file_imports");
+      expect(instructions).toContain("dynamic_imports_for_heavy_components");
+    });
+
+    it("should include re-render optimization rules", () => {
+      const instructions = framework.getReviewInstructions();
+      expect(instructions).toContain("dont_define_components_inside_components");
+      expect(instructions).toContain("use_lazy_state_initialization");
+      expect(instructions).toContain("use_functional_setState");
+      expect(instructions).toContain("use_transitions_for_non_urgent_updates");
+    });
+
+    it("should include CRITICAL tags", () => {
+      const instructions = framework.getReviewInstructions();
+      expect(instructions).toContain("[CRITICAL]");
+    });
+
     it("should return false positive patterns", () => {
       const patterns = framework.getFalsePositivePatterns();
       const ids = patterns.map((p) => p.id);
       expect(ids).toContain("react-empty-deps-array");
       expect(ids).toContain("react-memo-usage");
+    });
+
+    it("should include new false positive patterns", () => {
+      const patterns = framework.getFalsePositivePatterns();
+      const ids = patterns.map((p) => p.id);
+      expect(ids).toContain("react-simple-usememo");
+      expect(ids).toContain("react-barrel-import-internal");
+      expect(ids).toContain("react-derived-state");
     });
 
     it("should detect affected areas", () => {

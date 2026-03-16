@@ -12,14 +12,21 @@ export class NextJSFramework extends BaseFramework {
     return `
 FRAMEWORK: Next.js
 BEST_PRACTICES:
+  server_performance: [CRITICAL]
+    - authenticate_server_actions_like_api_routes: true
+    - minimize_serialization_at_rsc_boundaries: true
+    - parallel_data_fetching_with_component_composition: true
+    - prevent_waterfall_chains_in_api_routes: true
   components:
     - prefer_server_components: true
     - mark_client_components_explicitly: true
     - avoid_unnecessary_use_client: true
+    - strategic_suspense_boundaries: true
   data_fetching:
     - use_async_server_components: true
     - avoid_useeffect_for_data: true
     - use_server_actions_for_mutations: true
+    - per_request_dedup_with_react_cache: true
   api_routes:
     - validate_all_input: true
     - use_proper_http_status_codes: true
@@ -28,6 +35,12 @@ BEST_PRACTICES:
     - use_next_image: true
     - check_client_js_bundle_size: true
     - use_dynamic_imports_for_heavy_components: true
+    - defer_non_critical_third_party: true
+    - conditional_module_loading: true
+    - use_after_for_non_blocking_ops: true
+  caching:
+    - hoist_static_io_to_module_level: true
+    - cross_request_lru_caching: true
   routing:
     - use_app_router_conventions: true
     - proper_loading_and_error_boundaries: true
@@ -39,6 +52,9 @@ COMMON_FALSE_POSITIVES:
   - default export for pages is required convention
   - Server Actions (use server) are intentional
   - Dynamic route params typing is Next.js pattern
+  - React.cache() for per-request dedup is correct
+  - next/server after() for non-blocking ops is correct
+  - Auth checks inside Server Actions is correct security
 `.trim();
   }
 
@@ -79,6 +95,36 @@ COMMON_FALSE_POSITIVES:
         falsePositiveIndicators: [
           "should use native img",
           "next/image is overkill",
+        ],
+      },
+      {
+        id: "nextjs-react-cache-dedup",
+        category: "performance",
+        explanation: "React.cache() for per-request deduplication is the correct pattern in Next.js Server Components",
+        falsePositiveIndicators: [
+          "unnecessary caching",
+          "remove React.cache wrapper",
+          "duplicate data fetching",
+        ],
+      },
+      {
+        id: "nextjs-after-non-blocking",
+        category: "validation",
+        explanation: "next/server after() is the correct pattern for non-blocking operations like analytics and logging",
+        falsePositiveIndicators: [
+          "after is not awaited",
+          "fire-and-forget is unsafe",
+          "missing await for after",
+        ],
+      },
+      {
+        id: "nextjs-server-action-auth",
+        category: "authentication",
+        explanation: "Authentication checks inside Server Actions is correct security practice, similar to API route protection",
+        falsePositiveIndicators: [
+          "redundant auth check in server action",
+          "auth already checked in middleware",
+          "duplicate authentication",
         ],
       },
     ];
