@@ -38006,27 +38006,6 @@ class Logger {
         }
     }
     /**
-     * 진행 상황 로그
-     */
-    progress(message, current, total) {
-        if (this.shouldLog("info")) {
-            const percentage = Math.round((current / total) * 100);
-            console.log(`📊 [${current}/${total}] (${percentage}%) ${message}`);
-        }
-    }
-    /**
-     * 타이머 시작
-     */
-    time(label) {
-        console.time(`⏱️  ${label}`);
-    }
-    /**
-     * 타이머 종료
-     */
-    timeEnd(label) {
-        console.timeEnd(`⏱️  ${label}`);
-    }
-    /**
      * 섹션 헤더
      */
     section(title) {
@@ -38051,6 +38030,369 @@ function safeError(error) {
     return "Unknown error";
 }
 //# sourceMappingURL=logger.js.map
+;// CONCATENATED MODULE: ./dist/core/consensus-engine.js
+
+/**
+ * Agent Consensus Instructions (cacheable - never changes)
+ */
+const AGENT_CONSENSUS_INSTRUCTIONS = `
+SYSTEM: Dialectic Multi-Persona Code Review
+
+You are a dialectic code review system with two internal personas: HAWK (critical reviewer) and OWL (pragmatic validator). You must produce a structured review in THREE explicit steps using natural-language markdown. The entire output will be posted as a GitHub PR comment, so make it readable and valuable.
+
+=== OUTPUT FORMAT ===
+
+You MUST output EXACTLY this structure:
+
+=== STEP 1: REVIEW AGENT ANALYSIS ===
+
+As HAWK (critical reviewer), list every potential issue using this EXACT numbered format:
+
+Issue 1 (bug/security/performance/maintainability): Description of the issue.
+  - File: path/to/file.ts, Line: 42
+  - Evidence: concrete code reference from the diff
+  - Impact: what could go wrong in production
+
+Issue 2 (type): ...
+
+List ALL concerns — do not self-filter at this stage.
+
+=== STEP 2: DEV AGENT CHALLENGE ===
+
+As OWL (pragmatic validator), challenge EVERY issue HAWK raised using this EXACT format:
+
+Issue 1 Challenge: Your counterargument with evidence...
+→ REJECT (reason: e.g., "stylistic preference, no production impact, ROI too low")
+OR
+→ AGREE (reason: e.g., "confirmed bug that could cause production failure")
+
+Issue 2 Challenge: ...
+→ REJECT (reason) / → AGREE (reason)
+
+ROI CHECK — for each issue, ask these 3 questions:
+1. Does this prevent a real bug? (not stylistic)
+2. Could this cause a production incident?
+3. Is the ROI of fixing this HIGH?
+→ If not ALL three are "Yes", REJECT the issue.
+
+Be SKEPTICAL — reject unless HIGH ROI and clearly a bug or security risk.
+SECURITY OVERRIDE: Security issues (injection, auth bypass, data leak) are ALWAYS kept regardless of ROI.
+
+=== STEP 3: OUTPUT ===
+
+You MUST use this EXACT structure for STEP 3:
+
+📋 Executive Summary
+2-3 sentences summarizing the PR and review outcome.
+
+🔴 Critical Issues
+(List critical/security/bug issues that survived the debate. If none: "✅ Critical 이슈 없음")
+
+🟡 Important Issues
+(List important/performance/maintainability issues that survived. If none: "✅ Important 이슈 없음")
+
+✅ 긍정적인 점
+- Good pattern or practice observed (2-3 items)
+
+📊 Final Verdict
+결론: LGTM ✅ / Changes Requested 🔴 / Needs Discussion 💬
+머지: 즉시 가능 / 수정 후 / 팀 논의 후
+우선순위: P0 (긴급) / P1 (중요) / P2 (일반)
+
+Then end with the JSON block in the schema provided.
+
+RULES:
+- QUALITY_OVER_QUANTITY: Only consensus issues survive to the final output
+- Be specific: reference actual code, line numbers, variable names
+- Be constructive: explain WHY and suggest HOW to fix
+- Positive feedback is mandatory: acknowledge good patterns
+- FALSE POSITIVE PREVENTION: When in doubt, REJECT. Only high-confidence, high-ROI issues survive.
+`.trim();
+/**
+ * Consensus Engine
+ * Single-Call Multi-Persona Consensus Review with Prompt Caching
+ */
+class ConsensusEngine {
+    claudeAdapter;
+    projectConventions;
+    language;
+    constructor(claudeAdapter, projectConventions, language = "en") {
+        this.claudeAdapter = claudeAdapter;
+        this.projectConventions = projectConventions;
+        this.language = language;
+    }
+    /**
+     * 리뷰 생성 (Advanced API with Caching)
+     * @param analysis PR 분석 결과
+     * @param strategy 리뷰 전략
+     * @param fpPatterns False Positive 패턴 목록
+     */
+    async generateReview(analysis, strategy, fpPatterns, frameworkInstructions) {
+        logger.section("Generating Review");
+        const startTime = Date.now();
+        // 1. Build cacheable system messages
+        const systemMessages = this.buildSystemMessages(fpPatterns, frameworkInstructions);
+        // 2. Build dynamic user message
+        const userMessage = this.buildUserMessage(analysis, strategy);
+        // 3. Call Claude API with advanced features
+        logger.info("🤖 Calling Claude API with Prompt Caching enabled...");
+        const response = await this.claudeAdapter.sendAdvancedMessage(userMessage, {
+            maxTokens: strategy.maxTokens,
+            systemMessages,
+        });
+        // 4. Parse response
+        const parsed = this.parseReviewResponse(response.text);
+        // 5. Generate summary
+        const summary = this.generateSummary(analysis, parsed.consensus);
+        // 6. Build metadata
+        const metadata = {
+            framework: analysis.context.framework,
+            strategy: strategy.name,
+            tokensUsed: response.usage.inputTokens + response.usage.outputTokens,
+            filesReviewed: analysis.prioritizedFiles.length,
+            filesExcluded: analysis.excludedFiles.length,
+            reviewDuration: Date.now() - startTime,
+        };
+        logger.success(`✅ Review generated with ${parsed.issues.length} issues`);
+        logger.info(`⏱️  Duration: ${metadata.reviewDuration}ms`);
+        return {
+            issues: parsed.issues,
+            summary,
+            metadata,
+            debateNarrative: parsed.debateNarrative,
+        };
+    }
+    /**
+     * Build cacheable system messages
+     * These messages are cached by Claude API to reduce cost and latency
+     */
+    buildSystemMessages(fpPatterns, frameworkInstructions) {
+        const messages = [
+            // 1. Agent consensus instructions (never changes, always cached)
+            {
+                type: "text",
+                text: AGENT_CONSENSUS_INSTRUCTIONS,
+                cache_control: { type: "ephemeral" },
+            },
+            // 2. False positive patterns (changes per project, cached per session)
+            {
+                type: "text",
+                text: this.formatFPPatterns(fpPatterns),
+                cache_control: { type: "ephemeral" },
+            },
+            // 3. Framework instructions (from Framework instance)
+            {
+                type: "text",
+                text: frameworkInstructions || "FRAMEWORK: generic\nNo specific framework best practices.",
+                cache_control: { type: "ephemeral" },
+            },
+        ];
+        // 4. Language instruction (if non-English)
+        if (this.language && this.language !== "en") {
+            messages.push({
+                type: "text",
+                text: `RESPONSE_LANGUAGE: You MUST write ALL review output in ${this.getLanguageName(this.language)}.`,
+                cache_control: { type: "ephemeral" },
+            });
+        }
+        return messages;
+    }
+    getLanguageName(code) {
+        const map = {
+            ko: "Korean (한국어)",
+            ja: "Japanese (日本語)",
+            zh: "Chinese (中文)",
+        };
+        return map[code] || code;
+    }
+    /**
+     * Build dynamic user message (not cached)
+     */
+    buildUserMessage(analysis, strategy) {
+        return `
+REVIEW_CONTEXT:
+  framework: ${analysis.context.framework.name}
+  version: ${analysis.context.framework.version || "unknown"}
+  affected_areas: ${JSON.stringify(analysis.context.affectedAreas)}
+  flags:
+    critical_module: ${analysis.context.flags.criticalModule}
+    test_changed: ${analysis.context.flags.testChanged}
+    schema_changed: ${analysis.context.flags.schemaChanged}
+    config_only: ${analysis.context.flags.configOnly}
+
+METRICS:
+  files_changed: ${analysis.metrics.fileCount}
+  lines_added: ${analysis.metrics.addedLines}
+  lines_deleted: ${analysis.metrics.deletedLines}
+  core_files: ${analysis.metrics.coreFileCount}
+
+STRATEGY: ${strategy.name}
+INSTRUCTIONS: ${strategy.instructions}
+
+${this.projectConventions ? `PROJECT_CONVENTIONS:\n${this.projectConventions}\n` : ""}
+
+DIFF:
+\`\`\`diff
+${analysis.prioritizedDiff}
+\`\`\`
+
+CONSENSUS_JSON (place this JSON block at the very END of STEP 3, after 📊 Final Verdict):
+\`\`\`json
+{
+  "consensus_completed": true,
+  "agreed_issues": ["short summary of each agreed issue as a string"],
+  "rejected_issues": [{"issue": "description", "reason": "why rejected"}],
+  "verdict": "LGTM|CHANGES_REQUESTED|NEEDS_DISCUSSION",
+  "false_positive_rate": 0.0
+}
+\`\`\`
+- verdict: "LGTM" if no critical issues remain, "CHANGES_REQUESTED" if critical issues exist, "NEEDS_DISCUSSION" if ambiguous
+- false_positive_rate: ratio of rejected issues to total HAWK issues (0.0 to 1.0)
+- agreed_issues: array of SHORT summary strings for issues that survived the debate
+- rejected_issues: array of objects with "issue" and "reason" for each rejected issue
+
+Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural language markdown, then end STEP 3 with the JSON block.
+    `.trim();
+    }
+    /**
+     * Format False Positive patterns for prompt
+     */
+    formatFPPatterns(patterns) {
+        if (patterns.length === 0) {
+            return "FALSE_POSITIVE_PATTERNS: none";
+        }
+        const formatted = patterns
+            .map((p) => `
+- id: ${p.id}
+  category: ${p.category}
+  explanation: ${p.explanation}
+  ignore_if_review_contains: ${JSON.stringify(p.falsePositiveIndicators)}`)
+            .join("\n");
+        return `FALSE_POSITIVE_PATTERNS:\n${formatted}`;
+    }
+    /**
+     * Parse Claude response into structured format
+     */
+    parseReviewResponse(responseText) {
+        try {
+            // Find the code block containing consensus_completed (not just the last block,
+            // because Claude may output code suggestions after the JSON block)
+            const allCodeBlocks = [...responseText.matchAll(/```(?:\w*)?\s*\n([\s\S]*?)\n```/g)];
+            const consensusBlock = allCodeBlocks.find(block => block[1].includes('"consensus_completed"'));
+            let jsonText;
+            let debateNarrative;
+            if (consensusBlock) {
+                jsonText = consensusBlock[1];
+                // Everything before the consensus JSON block is the debate narrative
+                const blockStart = consensusBlock.index;
+                const blockEnd = blockStart + consensusBlock[0].length;
+                // Narrative = text before JSON block + any text after it (code suggestions etc.)
+                const before = responseText.substring(0, blockStart).trim();
+                const after = responseText.substring(blockEnd).trim();
+                const narrativeText = after ? `${before}\n\n${after}` : before;
+                if (narrativeText.length > 0) {
+                    debateNarrative = narrativeText;
+                }
+            }
+            else {
+                // Fallback: find unfenced JSON with consensus_completed key
+                const unfencedMatch = responseText.match(/\{\s*"consensus_completed"\s*:\s*[\s\S]*?\n\}/);
+                if (unfencedMatch) {
+                    jsonText = unfencedMatch[0];
+                    const matchStart = unfencedMatch.index;
+                    const narrativeText = responseText.substring(0, matchStart).trim();
+                    if (narrativeText.length > 0) {
+                        debateNarrative = narrativeText;
+                    }
+                }
+                else {
+                    // Last resort: try entire response as JSON
+                    jsonText = responseText;
+                }
+            }
+            const cleanedJson = jsonText.trim();
+            const parsed = JSON.parse(cleanedJson);
+            // New format: consensus_completed / agreed_issues / rejected_issues / verdict / false_positive_rate
+            const agreedIssues = Array.isArray(parsed.agreed_issues) ? parsed.agreed_issues : [];
+            const rejectedIssues = Array.isArray(parsed.rejected_issues) ? parsed.rejected_issues : [];
+            const verdict = parsed.verdict || "LGTM";
+            const fpRateNum = typeof parsed.false_positive_rate === "number" ? parsed.false_positive_rate : 0;
+            const fpRate = `${Math.round(fpRateNum * 100)}%`;
+            // Map verdict to consensus format
+            const verdictMap = {
+                LGTM: "APPROVE",
+                CHANGES_REQUESTED: "REQUEST_CHANGES",
+                NEEDS_DISCUSSION: "COMMENT",
+            };
+            const totalIssues = agreedIssues.length + rejectedIssues.length;
+            const consensus = {
+                totalReviewed: 0,
+                issuesRaised: totalIssues,
+                issuesFiltered: rejectedIssues.length,
+                overallAssessment: agreedIssues.length > 0
+                    ? `Found ${agreedIssues.length} agreed issue(s) after consensus filtering.`
+                    : "✅ No significant issues found. Code looks good.",
+                agreedIssues: agreedIssues.length,
+                rejectedIssues: rejectedIssues.length,
+                fpRate,
+                verdict: verdictMap[verdict] || verdict,
+                mergeable: verdict === "LGTM" || verdict === "NEEDS_DISCUSSION",
+                priority: verdict === "CHANGES_REQUESTED" ? "high" : verdict === "NEEDS_DISCUSSION" ? "medium" : "low",
+            };
+            // Issues array is empty — all issue detail lives in the debateNarrative markdown
+            return { issues: [], consensus, debateNarrative };
+        }
+        catch (error) {
+            logger.error(`Failed to parse review response: ${safeError(error)}`);
+            // Even if JSON parsing fails, try to salvage the narrative
+            const hasStepMarkers = responseText.includes("STEP 1") || responseText.includes("STEP 2");
+            return {
+                issues: [],
+                consensus: {
+                    totalReviewed: 0,
+                    issuesRaised: 0,
+                    issuesFiltered: 0,
+                    overallAssessment: "Failed to parse review response",
+                },
+                debateNarrative: hasStepMarkers ? responseText : undefined,
+            };
+        }
+    }
+    /**
+     * Generate review summary
+     */
+    generateSummary(analysis, consensus) {
+        // totalIssues = agreed issues count (from consensus JSON)
+        const totalIssues = consensus.agreedIssues ?? 0;
+        // Use consensus assessment if available, otherwise generate
+        let overallAssessment = consensus.overallAssessment;
+        if (!overallAssessment || overallAssessment === "Failed to parse review response") {
+            if (totalIssues === 0) {
+                overallAssessment = "✅ No significant issues found. Code looks good.";
+            }
+            else {
+                overallAssessment = `Found ${totalIssues} agreed issue(s) after consensus filtering.`;
+            }
+        }
+        return {
+            totalIssues,
+            criticalIssues: 0, // detail lives in narrative markdown
+            affectedAreas: analysis.context.affectedAreas,
+            overallAssessment,
+            verdict: consensus.verdict,
+            mergeable: consensus.mergeable,
+            priority: consensus.priority,
+            fpRate: consensus.fpRate,
+        };
+    }
+}
+//# sourceMappingURL=consensus-engine.js.map
+;// CONCATENATED MODULE: external "fs/promises"
+const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
+// EXTERNAL MODULE: external "fs"
+var external_fs_ = __nccwpck_require__(9896);
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(6928);
 ;// CONCATENATED MODULE: ./dist/core/types.js
 /**
  * Core type definitions for Dialectic PR
@@ -38058,11 +38400,11 @@ function safeError(error) {
 // ============================================================================
 // Constants
 // ============================================================================
-const DEFAULT_MODEL = "claude-opus-4-6";
+const DEFAULT_MODEL = "claude-opus-4-8";
 /** 보안/결제 등 크리티컬 모듈 경로 그룹 (regex 조합용) */
 const CRITICAL_MODULE_PATH = "(auth|payments|billing|security)";
 /** 보안/결제 등 크리티컬 모듈 경로 패턴 */
-const types_CRITICAL_MODULE_PATTERN = new RegExp(`\\/${CRITICAL_MODULE_PATH}\\/`);
+const CRITICAL_MODULE_PATTERN = new RegExp(`\\/${CRITICAL_MODULE_PATH}\\/`);
 /** PR diff 크기별 전략 선택 임계값 (bytes) */
 const STRATEGY_THRESHOLDS = {
     SMALL: 51_200, // 50KB
@@ -38104,7 +38446,229 @@ class ValidationError extends DialecticError {
     }
 }
 //# sourceMappingURL=types.js.map
+;// CONCATENATED MODULE: ./dist/utils/guardrails-loader.js
+
+
+
+
+/**
+ * Guardrails Loader
+ * .github/review-guardrails.json 로딩 전담
+ */
+class GuardrailsLoader {
+    /**
+     * .github/review-guardrails.json 자동 감지 및 로드
+     */
+    async load(repoPath) {
+        const guardrailsPath = (0,external_path_.join)(repoPath, ".github/review-guardrails.json");
+        if (!(0,external_fs_.existsSync)(guardrailsPath)) {
+            return {};
+        }
+        try {
+            const content = await (0,promises_namespaceObject.readFile)(guardrailsPath, "utf-8");
+            const parsed = JSON.parse(content);
+            // 배열 형식 [...] → { patterns: [...] }
+            if (Array.isArray(parsed)) {
+                const validPatterns = parsed.filter((p) => GuardrailsLoader.isValidFPPattern(p));
+                logger.info(`Loaded ${validPatterns.length} guardrail patterns from ${guardrailsPath}`);
+                return { patterns: validPatterns };
+            }
+            // 객체 형식 { patterns?: [...], disabled_patterns?: [...] }
+            const result = {};
+            if (Array.isArray(parsed.patterns)) {
+                result.patterns = parsed.patterns.filter((p) => GuardrailsLoader.isValidFPPattern(p));
+            }
+            if (Array.isArray(parsed.disabled_patterns)) {
+                result.disabled_patterns = parsed.disabled_patterns;
+            }
+            logger.info(`Loaded guardrails from ${guardrailsPath}: ${result.patterns?.length ?? 0} patterns, ${result.disabled_patterns?.length ?? 0} disabled`);
+            return result;
+        }
+        catch (error) {
+            logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${safeError(error)}`);
+            return {};
+        }
+    }
+    /**
+     * FP 패턴 유효성 검증
+     */
+    static isValidFPPattern(raw) {
+        if (typeof raw !== "object" || raw === null)
+            return false;
+        const obj = raw;
+        return (typeof obj.id === "string" &&
+            typeof obj.category === "string" &&
+            typeof obj.explanation === "string" &&
+            Array.isArray(obj.falsePositiveIndicators));
+    }
+}
+//# sourceMappingURL=guardrails-loader.js.map
+;// CONCATENATED MODULE: ./dist/utils/conventions-loader.js
+
+
+
+
+/**
+ * Conventions Loader
+ * CLAUDE.md 프로젝트 컨벤션 파일 로딩 전담
+ */
+class ConventionsLoader {
+    /**
+     * CLAUDE.md 자동 감지 및 로드
+     */
+    async load(repoPath) {
+        const claudeMdPath = (0,external_path_.join)(repoPath, "CLAUDE.md");
+        if (!(0,external_fs_.existsSync)(claudeMdPath)) {
+            return "";
+        }
+        try {
+            const content = await (0,promises_namespaceObject.readFile)(claudeMdPath, "utf-8");
+            logger.info(`Loaded project context from CLAUDE.md`);
+            return content;
+        }
+        catch (error) {
+            logger.warn(`Failed to load CLAUDE.md: ${safeError(error)}`);
+            return "";
+        }
+    }
+}
+//# sourceMappingURL=conventions-loader.js.map
+;// CONCATENATED MODULE: ./dist/utils/config-loader.js
+
+
+
+
+
+
+
+/**
+ * Configuration Loader
+ * .github/dialectic-pr.json 파일을 로드하고 검증
+ */
+class ConfigLoader {
+    guardrailsLoader = new GuardrailsLoader();
+    conventionsLoader = new ConventionsLoader();
+    defaultConfig = {
+        model: DEFAULT_MODEL,
+        language: "en",
+        exclude_patterns: [],
+        strategies: {
+            small: { maxTokens: 16000 },
+            medium: { maxTokens: 12000 },
+            large: { maxTokens: 8000 },
+        },
+    };
+    /** Deprecated field names that should trigger a warning */
+    static DEPRECATED_FIELDS = [
+        "context_files",
+        "false_positive_files",
+        "false_positive_patterns",
+        "framework_specific",
+        "conventions",
+    ];
+    /**
+     * 설정 파일 로드
+     * @param repoPath 저장소 루트 경로
+     * @param configPath 커스텀 설정 파일 경로 (선택적)
+     */
+    async load(repoPath, configPath) {
+        const configFilePath = configPath || (0,external_path_.join)(repoPath, ".github/dialectic-pr.json");
+        // 설정 파일이 없으면 기본 설정 사용
+        if (!(0,external_fs_.existsSync)(configFilePath)) {
+            logger.info("No config file found, using default configuration");
+            return this.defaultConfig;
+        }
+        try {
+            const content = await (0,promises_namespaceObject.readFile)(configFilePath, "utf-8");
+            const userConfig = JSON.parse(content);
+            // Deprecation warnings
+            this.warnDeprecatedFields(userConfig);
+            // 기본 설정과 병합
+            const mergedConfig = {
+                ...this.defaultConfig,
+                ...this.pickValidFields(userConfig),
+                strategies: {
+                    ...this.defaultConfig.strategies,
+                    ...userConfig.strategies,
+                },
+            };
+            this.validateConfig(mergedConfig);
+            logger.info(`Loaded config from ${configFilePath}`);
+            return mergedConfig;
+        }
+        catch (error) {
+            if (error instanceof ConfigError) {
+                throw error;
+            }
+            throw new ConfigError(`Failed to load config from ${configFilePath}: ${safeError(error)}`, { path: configFilePath, error });
+        }
+    }
+    /**
+     * .github/review-guardrails.json 자동 감지 및 로드
+     */
+    async loadGuardrails(repoPath) {
+        return this.guardrailsLoader.load(repoPath);
+    }
+    /**
+     * CLAUDE.md 자동 감지 및 로드
+     */
+    async loadClaudeMd(repoPath) {
+        return this.conventionsLoader.load(repoPath);
+    }
+    /**
+     * 설정 검증
+     */
+    validateConfig(config) {
+        // 모델 이름 검증
+        if (!config.model || typeof config.model !== "string") {
+            throw new ConfigError("Invalid model configuration");
+        }
+        // Strategies 검증
+        if (!config.strategies || typeof config.strategies !== "object") {
+            throw new ConfigError("Invalid strategies configuration");
+        }
+        const requiredStrategies = ["small", "medium", "large"];
+        for (const strategy of requiredStrategies) {
+            const strategyConfig = config.strategies[strategy];
+            if (!strategyConfig ||
+                typeof strategyConfig.maxTokens !== "number") {
+                throw new ConfigError(`Invalid strategy configuration for: ${strategy}`);
+            }
+        }
+        // Exclude patterns 검증
+        if (!Array.isArray(config.exclude_patterns)) {
+            throw new ConfigError("exclude_patterns must be an array");
+        }
+    }
+    /**
+     * Pick only valid DialecticConfig fields from user config
+     */
+    pickValidFields(userConfig) {
+        const result = {};
+        if (typeof userConfig.model === "string")
+            result.model = userConfig.model;
+        if (typeof userConfig.language === "string")
+            result.language = userConfig.language;
+        if (Array.isArray(userConfig.exclude_patterns)) {
+            result.exclude_patterns = userConfig.exclude_patterns;
+        }
+        return result;
+    }
+    /**
+     * Warn about deprecated config fields
+     */
+    warnDeprecatedFields(userConfig) {
+        for (const field of ConfigLoader.DEPRECATED_FIELDS) {
+            if (field in userConfig) {
+                logger.warn(`⚠️  Config field "${field}" is deprecated and will be ignored. ` +
+                    `Use .github/review-guardrails.json for FP patterns or CLAUDE.md for project context.`);
+            }
+        }
+    }
+}
+//# sourceMappingURL=config-loader.js.map
 ;// CONCATENATED MODULE: ./dist/security/privacy-guard.js
+
 
 /**
  * Privacy Guard
@@ -38123,7 +38687,7 @@ class PrivacyGuard {
      * 데이터 프라이버시 고지사항 출력
      */
     displayDisclaimer() {
-        console.log(`
+        logger.info(`
 ╔════════════════════════════════════════════════════════════════════╗
 ║  ⚠️  DATA PRIVACY NOTICE                                           ║
 ║                                                                    ║
@@ -38157,19 +38721,7 @@ class PrivacyGuard {
      * 매칭된 내용의 안전한 미리보기 생성
      */
     getPreview(match) {
-        if (match.length <= 50) {
-            return match.substring(0, 30) + "...";
-        }
         return match.substring(0, 30) + "...";
-    }
-    /**
-     * CI 환경인지 확인
-     */
-    isCIEnvironment() {
-        return !!(process.env.CI ||
-            process.env.GITHUB_ACTIONS ||
-            process.env.GITLAB_CI ||
-            process.env.CIRCLECI);
     }
 }
 //# sourceMappingURL=privacy-guard.js.map
@@ -40249,53 +40801,7 @@ minimatch.Minimatch = Minimatch;
 minimatch.escape = escape_escape;
 minimatch.unescape = unescape_unescape;
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ./dist/utils/file-classifier.js
-/**
- * File Classification Utilities
- * 파일 유형 판별을 위한 단일 진실 공급원 (Single Source of Truth)
- */
-const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
-const TEST_INDICATORS = [".test.", ".spec.", "/__tests__/", "/tests/"];
-const SCHEMA_INDICATORS = [".entity.", ".schema.", ".model.", "/migrations/"];
-const CONFIG_EXTENSIONS = [".json", ".yaml", ".yml", ".toml", ".ini", ".md"];
-const CONFIG_NAMES = [
-    "package.json",
-    "tsconfig.json",
-    "jest.config",
-    "vite.config",
-    "next.config",
-    "nest-cli.json",
-    ".eslintrc",
-    ".prettierrc",
-];
-/**
- * TypeScript/JavaScript 소스 파일인지 확인
- */
-function isSourceFile(filePath) {
-    return SOURCE_EXTENSIONS.some((ext) => filePath.endsWith(ext));
-}
-/**
- * 테스트 파일인지 확인
- */
-function file_classifier_isTestFile(filePath) {
-    return TEST_INDICATORS.some((indicator) => filePath.includes(indicator));
-}
-/**
- * 스키마/엔티티 파일인지 확인
- */
-function file_classifier_isSchemaFile(filePath) {
-    return SCHEMA_INDICATORS.some((indicator) => filePath.includes(indicator));
-}
-/**
- * 설정 파일인지 확인
- */
-function file_classifier_isConfigFile(filePath) {
-    return (CONFIG_EXTENSIONS.some((ext) => filePath.endsWith(ext)) ||
-        CONFIG_NAMES.some((name) => filePath.includes(name)));
-}
-//# sourceMappingURL=file-classifier.js.map
 ;// CONCATENATED MODULE: ./dist/security/exclude-filter.js
-
 
 /**
  * Exclude Filter
@@ -40316,6 +40822,8 @@ class ExcludeFilter {
         "**/yarn.lock",
         "**/pnpm-lock.yaml",
         "**/bun.lockb",
+        "**/Pipfile.lock",
+        "**/poetry.lock",
         // 빌드 결과물
         "**/*.min.js",
         "**/*.min.css",
@@ -40326,6 +40834,13 @@ class ExcludeFilter {
         "**/.nuxt/**",
         // 의존성
         "**/node_modules/**",
+        "**/.venv/**",
+        "**/venv/**",
+        // Python cache/build
+        "**/__pycache__/**",
+        "**/*.pyc",
+        "**/.mypy_cache/**",
+        "**/.pytest_cache/**",
         // 바이너리/이미지 파일
         "**/*.svg",
         "**/*.png",
@@ -40359,14 +40874,6 @@ class ExcludeFilter {
         return this.allExcludes.some((pattern) => minimatch(filePath, pattern, { dot: true }));
     }
     /**
-     * 파일 목록 필터링
-     * @param files 파일 경로 배열
-     * @returns 제외되지 않은 파일들
-     */
-    filterFiles(files) {
-        return files.filter((f) => !this.shouldExclude(f));
-    }
-    /**
      * 제외된 파일 목록 반환
      * @param files 전체 파일 경로 배열
      * @returns 제외된 파일들
@@ -40374,67 +40881,60 @@ class ExcludeFilter {
     getExcludedFiles(files) {
         return files.filter((f) => this.shouldExclude(f));
     }
-    /**
-     * TypeScript/JavaScript 소스 파일인지 확인
-     */
-    isSourceFile(filePath) {
-        return isSourceFile(filePath);
-    }
-    /**
-     * 테스트 파일인지 확인
-     */
-    isTestFile(filePath) {
-        return file_classifier_isTestFile(filePath);
-    }
-    /**
-     * 설정 파일인지 확인
-     */
-    isConfigFile(filePath) {
-        return file_classifier_isConfigFile(filePath);
-    }
-    /**
-     * 제외 패턴 통계
-     */
-    getExcludeStats(files) {
-        const excluded = this.getExcludedFiles(files);
-        const excludedByCategory = {
-            sensitive: 0,
-            lockFiles: 0,
-            build: 0,
-            binary: 0,
-            generated: 0,
-            other: 0,
-        };
-        for (const file of excluded) {
-            if (file.includes(".env") || file.includes("secret") || file.includes(".key")) {
-                excludedByCategory.sensitive++;
-            }
-            else if (file.includes(".lock")) {
-                excludedByCategory.lockFiles++;
-            }
-            else if (file.includes("/dist/") || file.includes("/build/")) {
-                excludedByCategory.build++;
-            }
-            else if (file.match(/\.(png|jpg|svg|woff|ttf)$/)) {
-                excludedByCategory.binary++;
-            }
-            else if (file.includes("generated")) {
-                excludedByCategory.generated++;
-            }
-            else {
-                excludedByCategory.other++;
-            }
-        }
-        return {
-            total: files.length,
-            excluded: excluded.length,
-            included: files.length - excluded.length,
-            excludedByCategory,
-        };
-    }
 }
 //# sourceMappingURL=exclude-filter.js.map
+;// CONCATENATED MODULE: ./dist/utils/file-classifier.js
+/**
+ * File Classification Utilities
+ * 파일 유형 판별을 위한 단일 진실 공급원 (Single Source of Truth)
+ */
+const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py"];
+const TEST_INDICATORS = [".test.", ".spec.", "/__tests__/", "/tests/"];
+/** Python 테스트 파일 패턴 (test_*.py, *_test.py, conftest.py) */
+const PYTHON_TEST_PATTERNS = [/test_.*\.py$/, /_test\.py$/, /conftest\.py$/];
+const SCHEMA_INDICATORS = [".entity.", ".schema.", ".model.", "/migrations/", "/models.py", "/alembic/"];
+const CONFIG_EXTENSIONS = [".json", ".yaml", ".yml", ".toml", ".ini", ".md"];
+const CONFIG_NAMES = [
+    "package.json",
+    "tsconfig.json",
+    "jest.config",
+    "vite.config",
+    "next.config",
+    "nest-cli.json",
+    ".eslintrc",
+    ".prettierrc",
+    "pyproject.toml",
+    "requirements.txt",
+];
+/**
+ * TypeScript/JavaScript 소스 파일인지 확인
+ */
+function isSourceFile(filePath) {
+    return SOURCE_EXTENSIONS.some((ext) => filePath.endsWith(ext));
+}
+/**
+ * 테스트 파일인지 확인
+ */
+function isTestFile(filePath) {
+    return (TEST_INDICATORS.some((indicator) => filePath.includes(indicator)) ||
+        PYTHON_TEST_PATTERNS.some((pattern) => pattern.test(filePath)));
+}
+/**
+ * 스키마/엔티티 파일인지 확인
+ */
+function isSchemaFile(filePath) {
+    return SCHEMA_INDICATORS.some((indicator) => filePath.includes(indicator));
+}
+/**
+ * 설정 파일인지 확인
+ */
+function isConfigFile(filePath) {
+    return (CONFIG_EXTENSIONS.some((ext) => filePath.endsWith(ext)) ||
+        CONFIG_NAMES.some((name) => filePath.includes(name)));
+}
+//# sourceMappingURL=file-classifier.js.map
 ;// CONCATENATED MODULE: ./dist/utils/metrics-calculator.js
+
 /**
  * Metrics Calculator
  * PR 변경사항 메트릭 계산
@@ -40445,7 +40945,7 @@ class MetricsCalculator {
      * @param diff Git diff 문자열
      * @param files 변경된 파일 목록
      */
-    calculate(diff, files) {
+    static calculate(diff, files) {
         const lines = diff.split("\n");
         let addedLines = 0;
         let deletedLines = 0;
@@ -40457,9 +40957,15 @@ class MetricsCalculator {
                 deletedLines++;
             }
         }
-        const tsFileCount = files.filter((f) => f.match(/\.(ts|tsx)$/)).length;
-        const jsFileCount = files.filter((f) => f.match(/\.(js|jsx|mjs|cjs)$/)).length;
-        const coreFileCount = this.countCoreFiles(files);
+        let tsFileCount = 0;
+        let jsFileCount = 0;
+        for (const f of files) {
+            if (/\.(ts|tsx)$/.test(f))
+                tsFileCount++;
+            else if (/\.(js|jsx|mjs|cjs)$/.test(f))
+                jsFileCount++;
+        }
+        const coreFileCount = MetricsCalculator.countCoreFiles(files);
         return {
             fileCount: files.length,
             addedLines,
@@ -40473,51 +40979,21 @@ class MetricsCalculator {
     /**
      * 핵심 파일 수 계산 (테스트, 설정 파일 제외)
      */
-    countCoreFiles(files) {
+    static countCoreFiles(files) {
         return files.filter((f) => {
-            // 테스트 파일 제외
-            if (f.includes(".test.") || f.includes(".spec.")) {
+            if (isTestFile(f))
                 return false;
-            }
-            // 설정 파일 제외
-            if (f.endsWith(".json") ||
-                f.endsWith(".yaml") ||
-                f.endsWith(".yml") ||
-                f.endsWith(".md")) {
+            if (isConfigFile(f))
                 return false;
-            }
-            // 소스 파일만 포함
-            return f.match(/\.(ts|tsx|js|jsx|mjs|cjs)$/);
+            return isSourceFile(f);
         }).length;
     }
     /**
      * 토큰 수 추정 (대략 4 chars ≈ 1 token)
      * @param text 텍스트
      */
-    estimateTokens(text) {
+    static estimateTokens(text) {
         return Math.ceil(text.length / 4);
-    }
-    /**
-     * 메트릭 요약 문자열 생성
-     */
-    summarize(metrics) {
-        return `
-Files: ${metrics.fileCount} (${metrics.tsFileCount} TS, ${metrics.jsFileCount} JS)
-Core Files: ${metrics.coreFileCount}
-Changes: +${metrics.addedLines} -${metrics.deletedLines}
-Size: ${this.formatBytes(metrics.diffSize)}
-Estimated Tokens: ~${this.estimateTokens(metrics.diffSize.toString())}
-    `.trim();
-    }
-    /**
-     * 바이트를 읽기 쉬운 형식으로 변환
-     */
-    formatBytes(bytes) {
-        if (bytes < 1024)
-            return `${bytes} B`;
-        if (bytes < 1024 * 1024)
-            return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 }
 //# sourceMappingURL=metrics-calculator.js.map
@@ -40530,9 +41006,7 @@ Estimated Tokens: ~${this.estimateTokens(metrics.diffSize.toString())}
  * 핵심 파일 우선순위 큐 관리 및 토큰 제한 내 파일 선택
  */
 class SmartFilter {
-    customRules;
-    metricsCalculator = new MetricsCalculator();
-    defaultPriorityRules = [
+    static DEFAULT_RULES = [
         // Critical: 핵심 비즈니스 로직 및 보안
         {
             pattern: new RegExp(`src\\/${CRITICAL_MODULE_PATH}\\/`),
@@ -40543,11 +41017,6 @@ class SmartFilter {
             pattern: /src\/core\//,
             priority: "critical",
             reason: "Core business logic",
-        },
-        {
-            pattern: /\.(controller|guard|middleware)\.ts$/,
-            priority: "critical",
-            reason: "HTTP security layer",
         },
         // Low: 낮은 우선순위 (먼저 체크하여 테스트 파일이 high로 매칭되지 않도록)
         {
@@ -40565,17 +41034,7 @@ class SmartFilter {
             priority: "low",
             reason: "Config/Doc file",
         },
-        // High: 중요 소스 코드 (구체적인 패턴 먼저)
-        {
-            pattern: /\.(service|repository|handler)\.(ts|js)$/,
-            priority: "high",
-            reason: "Business layer",
-        },
-        {
-            pattern: /\.entity\.ts$/,
-            priority: "high",
-            reason: "Database schema",
-        },
+        // High: 범용 소스 코드
         {
             pattern: /src\/.*\.(ts|tsx|js|jsx|py|java|go)$/,
             priority: "high",
@@ -40588,22 +41047,26 @@ class SmartFilter {
             reason: "Code file",
         },
     ];
-    constructor(customRules = []) {
-        this.customRules = customRules;
-    }
     /**
      * 파일 우선순위 지정 및 정렬
      * @param files 변경된 파일 목록
+     * @param extraRules 추가 우선순위 룰 (최우선 적용)
      */
-    prioritizeFiles(files) {
-        const allRules = [...this.defaultPriorityRules, ...this.customRules];
+    prioritizeFiles(files, extraRules) {
+        const allRules = [
+            ...(extraRules || []),
+            ...SmartFilter.DEFAULT_RULES,
+        ];
         return files
-            .map((file) => ({
-            path: file.path,
-            content: file.content,
-            priority: this.determinePriority(file.path, allRules),
-            reason: this.getPriorityReason(file.path, allRules),
-        }))
+            .map((file) => {
+            const match = this.findMatchingRule(file.path, allRules);
+            return {
+                path: file.path,
+                content: file.content,
+                priority: match.priority,
+                reason: match.reason,
+            };
+        })
             .sort((a, b) => this.priorityOrder(a.priority) - this.priorityOrder(b.priority));
     }
     /**
@@ -40616,7 +41079,7 @@ class SmartFilter {
         const excluded = [];
         let currentTokens = 0;
         for (const file of prioritizedFiles) {
-            const fileTokens = this.metricsCalculator.estimateTokens(file.content);
+            const fileTokens = MetricsCalculator.estimateTokens(file.content);
             if (currentTokens + fileTokens <= tokenLimit) {
                 included.push(file);
                 currentTokens += fileTokens;
@@ -40640,27 +41103,15 @@ class SmartFilter {
         return { included, excluded };
     }
     /**
-     * 파일 우선순위 결정
+     * 첫 번째 매칭 룰 탐색 (priority + reason 동시 반환)
      */
-    determinePriority(filePath, rules) {
-        // 첫 번째 매칭되는 룰의 우선순위 반환
+    findMatchingRule(filePath, rules) {
         for (const rule of rules) {
             if (this.matchesPattern(filePath, rule.pattern)) {
-                return rule.priority;
+                return { priority: rule.priority, reason: rule.reason };
             }
         }
-        return "low"; // 기본값
-    }
-    /**
-     * 우선순위 결정 이유
-     */
-    getPriorityReason(filePath, rules) {
-        for (const rule of rules) {
-            if (this.matchesPattern(filePath, rule.pattern)) {
-                return rule.reason;
-            }
-        }
-        return "Unknown file type";
+        return { priority: "low", reason: "Unknown file type" };
     }
     /**
      * 패턴 매칭
@@ -40693,16 +41144,9 @@ class SmartFilter {
         }
         return stats;
     }
-    /**
-     * 추가 우선순위 룰 설정
-     */
-    addCustomRules(rules) {
-        this.customRules.push(...rules);
-    }
 }
 //# sourceMappingURL=smart-filter.js.map
 ;// CONCATENATED MODULE: ./dist/core/analyzer.js
-
 
 
 
@@ -40714,36 +41158,49 @@ class PRAnalyzer {
     excludeFilter;
     smartFilter;
     frameworkDetector;
-    metricsCalculator = new MetricsCalculator();
-    constructor(excludeFilter, smartFilter, frameworkDetector) {
+    frameworkService;
+    constructor(excludeFilter, smartFilter, frameworkDetector, frameworkService) {
         this.excludeFilter = excludeFilter;
         this.smartFilter = smartFilter;
         this.frameworkDetector = frameworkDetector;
+        this.frameworkService = frameworkService;
     }
     /**
      * PR 분석
      * @param diff PR diff 문자열
      * @param files 변경된 파일 정보
-     * @param prInfo PR 정보
      * @param repoPath 저장소 루트 경로
      */
-    async analyze(diff, files, prInfo, repoPath) {
+    async analyze(diff, files, repoPath) {
         logger.section("PR Analysis");
         // 1. 프레임워크 감지
         const framework = await this.frameworkDetector.detect(repoPath, files.map((f) => f.path));
+        // 1b. Framework 인스턴스 획득
+        const frameworkInstance = this.frameworkService.getFramework(framework.name);
+        const frameworkRules = frameworkInstance?.getPriorityRules();
         // 2. 파일 필터링 (민감 파일 제외)
         const filteredFiles = this.filterFiles(files);
         logger.info(`📊 Files: ${files.length} total, ${filteredFiles.length} after filtering`);
         // 3. 관련 diff만 추출 (소스 코드만)
         const relevantDiff = this.extractRelevantDiff(diff, filteredFiles);
         // 4. 메트릭 계산
-        const metrics = this.metricsCalculator.calculate(relevantDiff, filteredFiles.map((f) => f.path));
-        // 5. 컨텍스트 플래그 감지
-        const flags = this.detectContextFlags(filteredFiles, framework.name);
-        // 6. 영향받는 영역 감지
-        const affectedAreas = this.detectAffectedAreas(filteredFiles.map((f) => f.path), framework.name);
+        const metrics = MetricsCalculator.calculate(relevantDiff, filteredFiles.map((f) => f.path));
+        const filePaths = filteredFiles.map((f) => f.path);
+        // 5. 컨텍스트 플래그 감지 — Framework 위임
+        const flags = frameworkInstance
+            ? frameworkInstance.extractContextFlags(filePaths)
+            : {
+                testChanged: false,
+                schemaChanged: false,
+                apiRoutesChanged: false,
+                controllersChanged: false,
+                criticalModule: false,
+                configOnly: false,
+            };
+        // 6. 영향받는 영역 감지 — Framework 위임
+        const affectedAreas = frameworkInstance?.detectAffectedAreas(filePaths) ?? [];
         // 7. 파일 우선순위 지정
-        const prioritizedFiles = this.smartFilter.prioritizeFiles(filteredFiles);
+        const prioritizedFiles = this.smartFilter.prioritizeFiles(filteredFiles, frameworkRules);
         // 8. 우선순위 정렬된 diff 생성
         const prioritizedDiff = this.buildPrioritizedDiff(prioritizedFiles);
         // 9. 제외된 파일 목록
@@ -40777,7 +41234,7 @@ class PRAnalyzer {
     extractRelevantDiff(diff, files) {
         // 소스 파일 경로 목록
         const sourcePaths = files
-            .filter((f) => this.excludeFilter.isSourceFile(f.path))
+            .filter((f) => isSourceFile(f.path))
             .map((f) => f.path);
         // diff를 파일별로 분리
         const diffBlocks = diff.split(/^diff --git /m);
@@ -40810,89 +41267,6 @@ ${file.content}
       `.trim());
         }
         return diffBlocks.join("\n\n" + "=".repeat(80) + "\n\n");
-    }
-    /**
-     * 컨텍스트 플래그 감지
-     */
-    detectContextFlags(files, frameworkName) {
-        const paths = files.map((f) => f.path);
-        return {
-            testChanged: paths.some((p) => this.excludeFilter.isTestFile(p)),
-            schemaChanged: paths.some((p) => file_classifier_isSchemaFile(p)),
-            apiRoutesChanged: frameworkName === "nextjs" &&
-                paths.some((p) => p.includes("/api/")),
-            controllersChanged: frameworkName === "nestjs" &&
-                paths.some((p) => p.includes(".controller.ts")),
-            criticalModule: paths.some((p) => types_CRITICAL_MODULE_PATTERN.test(p)),
-            configOnly: paths.every((p) => this.excludeFilter.isConfigFile(p)),
-        };
-    }
-    /**
-     * 영향받는 영역 감지
-     */
-    detectAffectedAreas(files, frameworkName) {
-        const areas = [];
-        // 공통 영역
-        if (files.some((f) => f.includes("/auth/"))) {
-            areas.push("🔐 Auth");
-        }
-        if (files.some((f) => f.includes("/payments/"))) {
-            areas.push("💳 Payments");
-        }
-        if (files.some((f) => f.includes("/billing/"))) {
-            areas.push("💰 Billing");
-        }
-        // 프레임워크별 영역
-        if (frameworkName === "nestjs") {
-            if (files.some((f) => f.match(/\.(controller|guard|interceptor)\.ts$/))) {
-                areas.push("🎯 HTTP Layer");
-            }
-            if (files.some((f) => f.match(/\.(service|repository)\.ts$/))) {
-                areas.push("⚙️ Business Logic");
-            }
-            if (files.some((f) => f.includes(".entity.ts"))) {
-                areas.push("🗄️ Database Schema");
-            }
-        }
-        else if (frameworkName === "nextjs") {
-            if (files.some((f) => f.includes("/api/"))) {
-                areas.push("🔌 API Routes");
-            }
-            if (files.some((f) => f.includes("page.tsx"))) {
-                areas.push("📄 Pages");
-            }
-            if (files.some((f) => f.includes("layout.tsx"))) {
-                areas.push("🎨 Layouts");
-            }
-        }
-        else if (frameworkName === "react") {
-            if (files.some((f) => f.includes("/components/"))) {
-                areas.push("🧩 Components");
-            }
-            if (files.some((f) => f.includes("/hooks/"))) {
-                areas.push("🪝 Hooks");
-            }
-            if (files.some((f) => f.includes("/store/") || f.includes("/redux/"))) {
-                areas.push("📦 State Management");
-            }
-        }
-        // 테스트
-        if (files.some((f) => this.excludeFilter.isTestFile(f))) {
-            areas.push("🧪 Tests");
-        }
-        return areas;
-    }
-    /**
-     * Config-only 변경인지 확인
-     */
-    isConfigOnly(files) {
-        return files.every((f) => this.excludeFilter.isConfigFile(f));
-    }
-    /**
-     * Critical 모듈 변경인지 확인
-     */
-    isCriticalModule(files) {
-        return files.some((f) => types_CRITICAL_MODULE_PATTERN.test(f));
     }
     /**
      * 분석 요약 로그
@@ -40931,31 +41305,26 @@ class StrategySelector {
         small: {
             name: "small",
             maxTokens: 16000,
-            contextTokenBudget: 4000,
             instructions: "Comprehensive review of all changes with detailed feedback.",
         },
         medium: {
             name: "medium",
             maxTokens: 12000,
-            contextTokenBudget: 3000,
             instructions: "Focus on critical issues and potential bugs. Skip minor style suggestions.",
         },
         large: {
             name: "large",
             maxTokens: 8000,
-            contextTokenBudget: 2000,
             instructions: "Focus only on critical security and bug issues. No style or minor suggestions.",
         },
         xlarge: {
             name: "xlarge",
             maxTokens: 4000,
-            contextTokenBudget: 1000,
             instructions: "Critical security issues only. Very large PR - recommend splitting.",
         },
         skip: {
             name: "skip",
             maxTokens: 0,
-            contextTokenBudget: 0,
             instructions: "PR is too large for meaningful review. Please split into smaller PRs.",
         },
     };
@@ -40999,7 +41368,6 @@ class StrategySelector {
             strategy = {
                 ...strategy,
                 maxTokens: Math.floor(strategy.maxTokens * criticalBoost),
-                contextTokenBudget: Math.floor(strategy.contextTokenBudget * criticalBoost),
             };
         }
         logger.info(`📊 Selected strategy: ${strategy.name} (${strategy.maxTokens} tokens)`);
@@ -41007,471 +41375,6 @@ class StrategySelector {
     }
 }
 //# sourceMappingURL=strategy-selector.js.map
-;// CONCATENATED MODULE: ./dist/core/consensus-engine.js
-
-/**
- * Agent Consensus Instructions (cacheable - never changes)
- */
-const AGENT_CONSENSUS_INSTRUCTIONS = `
-SYSTEM: Dialectic Multi-Persona Code Review
-
-You are a dialectic code review system with two internal personas: HAWK (critical reviewer) and OWL (pragmatic validator). You must produce a structured review in THREE explicit steps using natural-language markdown. The entire output will be posted as a GitHub PR comment, so make it readable and valuable.
-
-=== OUTPUT FORMAT ===
-
-You MUST output EXACTLY this structure:
-
-=== STEP 1: REVIEW AGENT ANALYSIS ===
-
-As HAWK (critical reviewer), list every potential issue using this EXACT numbered format:
-
-Issue 1 (bug/security/performance/maintainability): Description of the issue.
-  - File: path/to/file.ts, Line: 42
-  - Evidence: concrete code reference from the diff
-  - Impact: what could go wrong in production
-
-Issue 2 (type): ...
-
-List ALL concerns — do not self-filter at this stage.
-
-=== STEP 2: DEV AGENT CHALLENGE ===
-
-As OWL (pragmatic validator), challenge EVERY issue HAWK raised using this EXACT format:
-
-Issue 1 Challenge: Your counterargument with evidence...
-→ REJECT (reason: e.g., "stylistic preference, no production impact, ROI too low")
-OR
-→ AGREE (reason: e.g., "confirmed bug that could cause production failure")
-
-Issue 2 Challenge: ...
-→ REJECT (reason) / → AGREE (reason)
-
-ROI CHECK — for each issue, ask these 3 questions:
-1. Does this prevent a real bug? (not stylistic)
-2. Could this cause a production incident?
-3. Is the ROI of fixing this HIGH?
-→ If not ALL three are "Yes", REJECT the issue.
-
-Be SKEPTICAL — reject unless HIGH ROI and clearly a bug or security risk.
-SECURITY OVERRIDE: Security issues (injection, auth bypass, data leak) are ALWAYS kept regardless of ROI.
-
-=== STEP 3: OUTPUT ===
-
-You MUST use this EXACT structure for STEP 3:
-
-📋 Executive Summary
-2-3 sentences summarizing the PR and review outcome.
-
-🔴 Critical Issues
-(List critical/security/bug issues that survived the debate. If none: "✅ Critical 이슈 없음")
-
-🟡 Important Issues
-(List important/performance/maintainability issues that survived. If none: "✅ Important 이슈 없음")
-
-✅ 긍정적인 점
-- Good pattern or practice observed (2-3 items)
-
-📊 Final Verdict
-결론: LGTM ✅ / Changes Requested 🔴 / Needs Discussion 💬
-머지: 즉시 가능 / 수정 후 / 팀 논의 후
-우선순위: P0 (긴급) / P1 (중요) / P2 (일반)
-
-Then end with the JSON block in the schema provided.
-
-RULES:
-- QUALITY_OVER_QUANTITY: Only consensus issues survive to the final output
-- Be specific: reference actual code, line numbers, variable names
-- Be constructive: explain WHY and suggest HOW to fix
-- Positive feedback is mandatory: acknowledge good patterns
-- FALSE POSITIVE PREVENTION: When in doubt, REJECT. Only high-confidence, high-ROI issues survive.
-`.trim();
-/**
- * Framework-specific instructions (cacheable - changes per project)
- */
-const FRAMEWORK_INSTRUCTIONS = {
-    nestjs: `
-FRAMEWORK: NestJS
-BEST_PRACTICES:
-  dependency_injection:
-    - use_constructor_injection: true
-    - avoid_property_injection: true
-  error_handling:
-    - use_exception_filters: true
-    - throw_http_exceptions: true
-  validation:
-    - use_class_validator_dtos: true
-  architecture:
-    - avoid_circular_dependencies: true
-    - single_responsibility_modules: true
-COMMON_FALSE_POSITIVES:
-  - "throw new Error" is acceptable with AllExceptionsFilter
-  - "new" keyword is intentional for DTOs and entities
-  - Logger dependency injection is project pattern
-`.trim(),
-    nextjs: `
-FRAMEWORK: Next.js
-BEST_PRACTICES:
-  components:
-    - prefer_server_components: true
-    - mark_client_components_explicitly: true
-  data_fetching:
-    - use_async_server_components: true
-    - avoid_useeffect_for_data: true
-  api_routes:
-    - validate_all_input: true
-    - use_proper_http_status_codes: true
-  optimization:
-    - use_next_image: true
-    - check_client_js_bundle_size: true
-COMMON_FALSE_POSITIVES:
-  - async Server Components without useEffect is correct
-  - "use client" directive is intentional marking
-`.trim(),
-    react: `
-FRAMEWORK: React
-BEST_PRACTICES:
-  hooks:
-    - follow_rules_of_hooks: true
-    - include_all_dependencies: true
-    - cleanup_effects: true
-  performance:
-    - use_memo_appropriately: true
-    - use_callback_for_child_optimization: true
-  state:
-    - colocate_state: true
-    - lift_when_needed: true
-  lists:
-    - stable_unique_keys: true
-COMMON_FALSE_POSITIVES:
-  - intentional dependency omissions with eslint-disable
-  - memo usage is performance optimization
-`.trim(),
-    express: `
-FRAMEWORK: Express
-BEST_PRACTICES:
-  middleware:
-    - correct_order: true
-    - error_handlers_last: true
-  async_handling:
-    - use_async_await_with_try_catch: true
-    - or_use_error_middleware: true
-  validation:
-    - validate_all_user_input: true
-  security:
-    - use_helmet: true
-    - implement_rate_limiting: true
-  routing:
-    - use_router_for_modular_routes: true
-COMMON_FALSE_POSITIVES:
-  - middleware order is intentional architecture
-  - custom error handler is standard pattern
-`.trim(),
-    vanilla: `
-FRAMEWORK: TypeScript/JavaScript
-BEST_PRACTICES:
-  types:
-    - avoid_any: true
-    - use_proper_types: true
-  async:
-    - handle_promise_rejections: true
-  errors:
-    - throw_typed_errors: true
-  null_safety:
-    - check_null_undefined: true
-`.trim(),
-};
-/**
- * Consensus Engine
- * Single-Call Multi-Persona Consensus Review with Prompt Caching
- */
-class ConsensusEngine {
-    claudeAdapter;
-    projectConventions;
-    language;
-    constructor(claudeAdapter, projectConventions, language = "en") {
-        this.claudeAdapter = claudeAdapter;
-        this.projectConventions = projectConventions;
-        this.language = language;
-    }
-    /**
-     * 리뷰 생성 (Advanced API with Caching)
-     * @param analysis PR 분석 결과
-     * @param strategy 리뷰 전략
-     * @param fpPatterns False Positive 패턴 목록
-     */
-    async generateReview(analysis, strategy, fpPatterns) {
-        logger.section("Generating Review");
-        const startTime = Date.now();
-        // 1. Build cacheable system messages
-        const systemMessages = this.buildSystemMessages(analysis.context.framework.name, fpPatterns);
-        // 2. Build dynamic user message
-        const userMessage = this.buildUserMessage(analysis, strategy);
-        // 3. Call Claude API with advanced features
-        logger.info("🤖 Calling Claude API with Prompt Caching enabled...");
-        const response = await this.claudeAdapter.sendAdvancedMessage(userMessage, {
-            maxTokens: strategy.maxTokens,
-            systemMessages,
-        });
-        // 4. Parse response
-        const parsed = this.parseReviewResponse(response.text);
-        // 5. Generate summary
-        const summary = this.generateSummary(parsed.issues, analysis, parsed.consensus);
-        // 6. Build metadata
-        const metadata = {
-            framework: analysis.context.framework,
-            strategy: strategy.name,
-            tokensUsed: response.usage.inputTokens + response.usage.outputTokens,
-            filesReviewed: analysis.prioritizedFiles.length,
-            filesExcluded: analysis.excludedFiles.length,
-            reviewDuration: Date.now() - startTime,
-        };
-        logger.success(`✅ Review generated with ${parsed.issues.length} issues`);
-        logger.info(`⏱️  Duration: ${metadata.reviewDuration}ms`);
-        logger.info(`💰 Cost: $${response.usage.totalCost.toFixed(4)}`);
-        return {
-            issues: parsed.issues,
-            summary,
-            metadata,
-            debateNarrative: parsed.debateNarrative,
-        };
-    }
-    /**
-     * Build cacheable system messages
-     * These messages are cached by Claude API to reduce cost and latency
-     */
-    buildSystemMessages(frameworkName, fpPatterns) {
-        const messages = [
-            // 1. Agent consensus instructions (never changes, always cached)
-            {
-                type: "text",
-                text: AGENT_CONSENSUS_INSTRUCTIONS,
-                cache_control: { type: "ephemeral" },
-            },
-            // 2. False positive patterns (changes per project, cached per session)
-            {
-                type: "text",
-                text: this.formatFPPatterns(fpPatterns),
-                cache_control: { type: "ephemeral" },
-            },
-            // 3. Framework instructions (changes per project, cached per session)
-            {
-                type: "text",
-                text: FRAMEWORK_INSTRUCTIONS[frameworkName] || FRAMEWORK_INSTRUCTIONS.vanilla,
-                cache_control: { type: "ephemeral" },
-            },
-        ];
-        // 4. Language instruction (if non-English)
-        if (this.language && this.language !== "en") {
-            messages.push({
-                type: "text",
-                text: `RESPONSE_LANGUAGE: You MUST write ALL review output in ${this.getLanguageName(this.language)}.`,
-                cache_control: { type: "ephemeral" },
-            });
-        }
-        return messages;
-    }
-    getLanguageName(code) {
-        const map = {
-            ko: "Korean (한국어)",
-            ja: "Japanese (日本語)",
-            zh: "Chinese (中文)",
-        };
-        return map[code] || code;
-    }
-    /**
-     * Build dynamic user message (not cached)
-     */
-    buildUserMessage(analysis, strategy) {
-        return `
-REVIEW_CONTEXT:
-  framework: ${analysis.context.framework.name}
-  version: ${analysis.context.framework.version || "unknown"}
-  affected_areas: ${JSON.stringify(analysis.context.affectedAreas)}
-  flags:
-    critical_module: ${analysis.context.flags.criticalModule}
-    test_changed: ${analysis.context.flags.testChanged}
-    schema_changed: ${analysis.context.flags.schemaChanged}
-    config_only: ${analysis.context.flags.configOnly}
-
-METRICS:
-  files_changed: ${analysis.metrics.fileCount}
-  lines_added: ${analysis.metrics.addedLines}
-  lines_deleted: ${analysis.metrics.deletedLines}
-  core_files: ${analysis.metrics.coreFileCount}
-
-STRATEGY: ${strategy.name}
-INSTRUCTIONS: ${strategy.instructions}
-
-${this.projectConventions ? `PROJECT_CONVENTIONS:\n${this.projectConventions}\n` : ""}
-
-DIFF:
-\`\`\`diff
-${analysis.prioritizedDiff}
-\`\`\`
-
-CONSENSUS_JSON (place this JSON block at the very END of STEP 3, after 📊 Final Verdict):
-\`\`\`json
-{
-  "consensus_completed": true,
-  "agreed_issues": ["short summary of each agreed issue as a string"],
-  "rejected_issues": [{"issue": "description", "reason": "why rejected"}],
-  "verdict": "LGTM|CHANGES_REQUESTED|NEEDS_DISCUSSION",
-  "false_positive_rate": 0.0
-}
-\`\`\`
-- verdict: "LGTM" if no critical issues remain, "CHANGES_REQUESTED" if critical issues exist, "NEEDS_DISCUSSION" if ambiguous
-- false_positive_rate: ratio of rejected issues to total HAWK issues (0.0 to 1.0)
-- agreed_issues: array of SHORT summary strings for issues that survived the debate
-- rejected_issues: array of objects with "issue" and "reason" for each rejected issue
-
-Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural language markdown, then end STEP 3 with the JSON block.
-    `.trim();
-    }
-    /**
-     * Format False Positive patterns for prompt
-     */
-    formatFPPatterns(patterns) {
-        if (patterns.length === 0) {
-            return "FALSE_POSITIVE_PATTERNS: none";
-        }
-        const formatted = patterns
-            .map((p) => `
-- id: ${p.id}
-  category: ${p.category}
-  explanation: ${p.explanation}
-  ignore_if_review_contains: ${JSON.stringify(p.falsePositiveIndicators)}`)
-            .join("\n");
-        return `FALSE_POSITIVE_PATTERNS:\n${formatted}`;
-    }
-    /**
-     * Parse Claude response into structured format
-     */
-    parseReviewResponse(responseText) {
-        try {
-            // Find the code block containing consensus_completed (not just the last block,
-            // because Claude may output code suggestions after the JSON block)
-            const allCodeBlocks = [...responseText.matchAll(/```(?:\w*)?\s*\n([\s\S]*?)\n```/g)];
-            const consensusBlock = allCodeBlocks.find(block => block[1].includes('"consensus_completed"'));
-            let jsonText;
-            let debateNarrative;
-            if (consensusBlock) {
-                jsonText = consensusBlock[1];
-                // Everything before the consensus JSON block is the debate narrative
-                const blockStart = consensusBlock.index;
-                const blockEnd = blockStart + consensusBlock[0].length;
-                // Narrative = text before JSON block + any text after it (code suggestions etc.)
-                const before = responseText.substring(0, blockStart).trim();
-                const after = responseText.substring(blockEnd).trim();
-                const narrativeText = after ? `${before}\n\n${after}` : before;
-                if (narrativeText.length > 0) {
-                    debateNarrative = narrativeText;
-                }
-            }
-            else {
-                // Fallback: find unfenced JSON with consensus_completed key
-                const unfencedMatch = responseText.match(/\{\s*"consensus_completed"\s*:\s*[\s\S]*?\n\}/);
-                if (unfencedMatch) {
-                    jsonText = unfencedMatch[0];
-                    const matchStart = unfencedMatch.index;
-                    const narrativeText = responseText.substring(0, matchStart).trim();
-                    if (narrativeText.length > 0) {
-                        debateNarrative = narrativeText;
-                    }
-                }
-                else {
-                    // Last resort: try entire response as JSON
-                    jsonText = responseText;
-                }
-            }
-            const cleanedJson = jsonText.trim();
-            const parsed = JSON.parse(cleanedJson);
-            // New format: consensus_completed / agreed_issues / rejected_issues / verdict / false_positive_rate
-            const agreedIssues = Array.isArray(parsed.agreed_issues) ? parsed.agreed_issues : [];
-            const rejectedIssues = Array.isArray(parsed.rejected_issues) ? parsed.rejected_issues : [];
-            const verdict = parsed.verdict || "LGTM";
-            const fpRateNum = typeof parsed.false_positive_rate === "number" ? parsed.false_positive_rate : 0;
-            const fpRate = `${Math.round(fpRateNum * 100)}%`;
-            // Map verdict to consensus format
-            const verdictMap = {
-                LGTM: "APPROVE",
-                CHANGES_REQUESTED: "REQUEST_CHANGES",
-                NEEDS_DISCUSSION: "COMMENT",
-            };
-            const totalIssues = agreedIssues.length + rejectedIssues.length;
-            const consensus = {
-                totalReviewed: 0,
-                issuesRaised: totalIssues,
-                issuesFiltered: rejectedIssues.length,
-                overallAssessment: agreedIssues.length > 0
-                    ? `Found ${agreedIssues.length} agreed issue(s) after consensus filtering.`
-                    : "✅ No significant issues found. Code looks good.",
-                agreedIssues: agreedIssues.length,
-                rejectedIssues: rejectedIssues.length,
-                fpRate,
-                verdict: verdictMap[verdict] || verdict,
-                mergeable: verdict === "LGTM" || verdict === "NEEDS_DISCUSSION",
-                priority: verdict === "CHANGES_REQUESTED" ? "high" : verdict === "NEEDS_DISCUSSION" ? "medium" : "low",
-            };
-            // Issues array is empty — all issue detail lives in the debateNarrative markdown
-            return { issues: [], consensus, debateNarrative };
-        }
-        catch (error) {
-            logger.error(`Failed to parse review response: ${safeError(error)}`);
-            // Even if JSON parsing fails, try to salvage the narrative
-            const hasStepMarkers = responseText.includes("STEP 1") || responseText.includes("STEP 2");
-            return {
-                issues: [],
-                consensus: {
-                    totalReviewed: 0,
-                    issuesRaised: 0,
-                    issuesFiltered: 0,
-                    overallAssessment: "Failed to parse review response",
-                },
-                debateNarrative: hasStepMarkers ? responseText : undefined,
-            };
-        }
-    }
-    /**
-     * Generate review summary
-     */
-    generateSummary(_issues, analysis, consensus) {
-        // totalIssues = agreed issues count (from consensus JSON)
-        const totalIssues = consensus.agreedIssues ?? 0;
-        // Use consensus assessment if available, otherwise generate
-        let overallAssessment = consensus.overallAssessment;
-        if (!overallAssessment || overallAssessment === "Failed to parse review response") {
-            if (totalIssues === 0) {
-                overallAssessment = "✅ No significant issues found. Code looks good.";
-            }
-            else {
-                overallAssessment = `Found ${totalIssues} agreed issue(s) after consensus filtering.`;
-            }
-        }
-        return {
-            totalIssues,
-            criticalIssues: 0, // detail lives in narrative markdown
-            affectedAreas: analysis.context.affectedAreas,
-            overallAssessment,
-            verdict: consensus.verdict,
-            mergeable: consensus.mergeable,
-            priority: consensus.priority,
-            fpRate: consensus.fpRate,
-        };
-    }
-    /**
-     * Get framework instructions for external use
-     */
-    static getFrameworkInstructions(frameworkName) {
-        return FRAMEWORK_INSTRUCTIONS[frameworkName] || FRAMEWORK_INSTRUCTIONS.vanilla;
-    }
-    /**
-     * Get agent consensus instructions for external use
-     */
-    static getAgentInstructions() {
-        return AGENT_CONSENSUS_INSTRUCTIONS;
-    }
-}
-//# sourceMappingURL=consensus-engine.js.map
 ;// CONCATENATED MODULE: ./node_modules/@anthropic-ai/sdk/version.mjs
 const VERSION = '0.32.1'; // x-release-please-version
 //# sourceMappingURL=version.mjs.map
@@ -45175,16 +45078,15 @@ Anthropic.Beta = Beta;
  * Exponential backoff를 사용한 재시도 로직
  */
 class RetryHandler {
-    options;
-    defaultOptions = {
-        maxRetries: 3,
-        initialDelayMs: 1000,
-        maxDelayMs: 10000,
-        backoffMultiplier: 2,
-    };
+    config;
     constructor(options = {}) {
-        this.options = options;
-        this.options = { ...this.defaultOptions, ...options };
+        this.config = {
+            maxRetries: 3,
+            initialDelayMs: 1000,
+            maxDelayMs: 10000,
+            backoffMultiplier: 2,
+            ...options,
+        };
     }
     /**
      * 재시도 로직과 함께 함수 실행
@@ -45192,7 +45094,7 @@ class RetryHandler {
      * @param retryableErrors 재시도 가능한 에러 코드 (선택적)
      */
     async execute(fn, retryableErrors) {
-        const maxRetries = this.options.maxRetries;
+        const maxRetries = this.config.maxRetries;
         let lastError;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
@@ -45228,8 +45130,12 @@ class RetryHandler {
      * 재시도 가능한 에러인지 확인
      */
     isRetryableError(error, retryableCodes) {
-        if (typeof error === "object" && error !== null && "statusCode" in error) {
-            return retryableCodes.includes(error.statusCode);
+        if (typeof error === "object" && error !== null) {
+            const code = ("statusCode" in error ? error.statusCode : undefined) ??
+                ("status" in error ? error.status : undefined);
+            if (code !== undefined) {
+                return retryableCodes.includes(code);
+            }
         }
         return false;
     }
@@ -45237,7 +45143,7 @@ class RetryHandler {
      * Exponential backoff 지연 시간 계산
      */
     calculateDelay(attempt) {
-        const { initialDelayMs, maxDelayMs, backoffMultiplier, } = this.options;
+        const { initialDelayMs, maxDelayMs, backoffMultiplier } = this.config;
         const delay = initialDelayMs * Math.pow(backoffMultiplier, attempt);
         return Math.min(delay, maxDelayMs);
     }
@@ -45263,7 +45169,6 @@ class ClaudeAdapter {
     model;
     client;
     retryHandler;
-    defaultModel = DEFAULT_MODEL;
     constructor(apiKey, model) {
         this.apiKey = apiKey;
         this.model = model;
@@ -45282,7 +45187,7 @@ class ClaudeAdapter {
      * @param options 고급 옵션
      */
     async sendAdvancedMessage(userMessage, options) {
-        const model = options.model || this.model || this.defaultModel;
+        const model = options.model || this.model || DEFAULT_MODEL;
         logger.info(`🤖 Sending request to Claude (${model})...`);
         logger.debug(`User message length: ${userMessage.length} chars`);
         logger.debug(`Max tokens: ${options.maxTokens}`);
@@ -45294,7 +45199,6 @@ class ClaudeAdapter {
                 const requestParams = {
                     model,
                     max_tokens: options.maxTokens,
-                    temperature: options.temperature ?? 0,
                     messages: [
                         {
                             role: "user",
@@ -45324,7 +45228,6 @@ class ClaudeAdapter {
                     outputTokens: usageData.output_tokens,
                     cacheCreationTokens: usageData.cache_creation_input_tokens || 0,
                     cacheReadTokens: usageData.cache_read_input_tokens || 0,
-                    totalCost: 0,
                 };
                 logger.success(`✅ Received response from Claude`);
                 logger.info(`📊 Tokens: ${usage.inputTokens} in + ${usage.outputTokens} out`);
@@ -45348,12 +45251,6 @@ class ClaudeAdapter {
                 throw error;
             }
         }, [429, 500, 502, 503, 504]);
-    }
-    /**
-     * 현재 사용 중인 모델 확인
-     */
-    getModel() {
-        return this.model || this.defaultModel;
     }
 }
 //# sourceMappingURL=claude-api.js.map
@@ -49348,6 +49245,9 @@ const dist_src_Octokit = Octokit.plugin(requestLog, legacyRestEndpointMethods, p
 
 
 
+function toAPIError(error, message) {
+    return new APIError(error.status ?? 500, `${message}: ${safeError(error)}`);
+}
 /**
  * GitHub API Adapter
  * GitHub REST API 클라이언트 (Batch Review 방식)
@@ -49376,12 +49276,14 @@ class GitHubAdapter {
                     format: "diff",
                 },
             });
-            logger.success(`✅ Fetched PR diff (${data.length} bytes)`);
-            return data;
+            // Octokit types this as object, but mediaType "diff" returns raw string
+            const diff = data;
+            logger.success(`✅ Fetched PR diff (${diff.length} bytes)`);
+            return diff;
         }
         catch (error) {
             logger.error(`Failed to fetch PR diff: ${safeError(error)}`);
-            throw new APIError(error.status ?? 500, `Failed to fetch PR diff: ${safeError(error)}`);
+            throw toAPIError(error, "Failed to fetch PR diff");
         }
     }
     /**
@@ -49402,34 +49304,7 @@ class GitHubAdapter {
         }
         catch (error) {
             logger.error(`Failed to fetch PR files: ${safeError(error)}`);
-            throw new APIError(error.status ?? 500, `Failed to fetch PR files: ${safeError(error)}`);
-        }
-    }
-    /**
-     * Batch Review 작성
-     * 여러 코멘트를 하나의 Review로 묶어서 전송
-     * @param params Batch Review 파라미터
-     */
-    async postBatchReview(params) {
-        logger.info(`💬 Posting batch review with ${params.comments.length} comments...`);
-        try {
-            await this.octokit.pulls.createReview({
-                owner: params.owner,
-                repo: params.repo,
-                pull_number: params.prNumber,
-                body: params.body,
-                event: params.event || "COMMENT",
-                comments: params.comments.map((c) => ({
-                    path: c.path,
-                    position: c.position,
-                    body: c.body,
-                })),
-            });
-            logger.success(`✅ Posted batch review with ${params.comments.length} comments`);
-        }
-        catch (error) {
-            logger.error(`Failed to post batch review: ${safeError(error)}`);
-            throw new APIError(error.status ?? 500, `Failed to post batch review: ${safeError(error)}`);
+            throw toAPIError(error, "Failed to fetch PR files");
         }
     }
     /**
@@ -49450,66 +49325,11 @@ class GitHubAdapter {
         }
         catch (error) {
             logger.error(`Failed to post comment: ${safeError(error)}`);
-            throw new APIError(error.status ?? 500, `Failed to post comment: ${safeError(error)}`);
-        }
-    }
-    /**
-     * PR에 라벨 추가
-     * @param prInfo PR 정보
-     * @param labels 추가할 라벨 목록
-     */
-    async addLabels(prInfo, labels) {
-        logger.info(`🏷️  Adding labels: ${labels.join(", ")}`);
-        try {
-            await this.octokit.issues.addLabels({
-                owner: prInfo.owner,
-                repo: prInfo.repo,
-                issue_number: prInfo.pullNumber,
-                labels,
-            });
-            logger.success(`✅ Added labels`);
-        }
-        catch (error) {
-            logger.error(`Failed to add labels: ${safeError(error)}`);
-            throw new APIError(error.status ?? 500, `Failed to add labels: ${safeError(error)}`);
-        }
-    }
-    /**
-     * PR 정보 가져오기
-     * @param prInfo PR 정보
-     */
-    async getPRInfo(prInfo) {
-        logger.info(`📥 Fetching PR info for #${prInfo.pullNumber}...`);
-        try {
-            const { data } = await this.octokit.pulls.get({
-                owner: prInfo.owner,
-                repo: prInfo.repo,
-                pull_number: prInfo.pullNumber,
-            });
-            logger.success(`✅ Fetched PR info`);
-            return {
-                title: data.title,
-                body: data.body,
-                state: data.state,
-                isDraft: data.draft || false,
-                additions: data.additions,
-                deletions: data.deletions,
-                changedFiles: data.changed_files,
-            };
-        }
-        catch (error) {
-            logger.error(`Failed to fetch PR info: ${safeError(error)}`);
-            throw new APIError(error.status ?? 500, `Failed to fetch PR info: ${safeError(error)}`);
+            throw toAPIError(error, "Failed to post comment");
         }
     }
 }
 //# sourceMappingURL=github-api.js.map
-;// CONCATENATED MODULE: external "fs/promises"
-const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
-// EXTERNAL MODULE: external "fs"
-var external_fs_ = __nccwpck_require__(9896);
-// EXTERNAL MODULE: external "path"
-var external_path_ = __nccwpck_require__(6928);
 ;// CONCATENATED MODULE: ./dist/frameworks/detector.js
 
 
@@ -49545,10 +49365,22 @@ class FrameworkDetector {
             logger.success(`✅ Detected: React ${version || "unknown"}`);
             return { name: "react", confidence: "high", version };
         }
-        if (this.isExpress(packageJson, files)) {
+        if (this.isExpress(packageJson)) {
             const version = this.getVersion(packageJson, "express");
             logger.success(`✅ Detected: Express ${version || "unknown"}`);
             return { name: "express", confidence: "medium", version };
+        }
+        // 2.5. Python 프레임워크 감지 (JS 프레임워크 미감지 시)
+        const hasPythonFiles = files.some((f) => f.endsWith(".py"));
+        if (hasPythonFiles) {
+            const pythonReqs = await this.readPythonRequirements(rootPath);
+            if (this.isFastAPI(pythonReqs)) {
+                logger.success("✅ Detected: FastAPI (Python)");
+                return { name: "fastapi", confidence: "high" };
+            }
+            // Python 프로젝트이지만 FastAPI가 아닌 경우 vanilla fallback
+            logger.info("ℹ️  Python project detected, but not FastAPI. Using vanilla.");
+            return { name: "vanilla", confidence: "medium" };
         }
         // 3. 기본값: vanilla TypeScript/JavaScript
         logger.info("ℹ️  No specific framework detected, using vanilla TS/JS");
@@ -49627,13 +49459,85 @@ class FrameworkDetector {
     /**
      * Express 감지
      */
-    isExpress(pkg, _files) {
+    isExpress(pkg) {
         // package.json에 express 의존성 확인
         if (this.hasDependency(pkg, "express")) {
             return true;
         }
         // 파일 내용까지 확인하려면 비용이 크므로 의존성만 확인
         return false;
+    }
+    /**
+     * Python requirements 읽기 (requirements.txt + pyproject.toml)
+     */
+    async readPythonRequirements(rootPath) {
+        const packages = [];
+        // requirements.txt 파싱
+        const reqPath = (0,external_path_.join)(rootPath, "requirements.txt");
+        if ((0,external_fs_.existsSync)(reqPath)) {
+            try {
+                const content = await (0,promises_namespaceObject.readFile)(reqPath, "utf-8");
+                for (const line of content.split("\n")) {
+                    const trimmed = line.trim();
+                    if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("-")) {
+                        // "fastapi>=0.100.0" → "fastapi"
+                        const pkgName = trimmed.split(/[>=<!\[;]/)[0].trim().toLowerCase();
+                        if (pkgName)
+                            packages.push(pkgName);
+                    }
+                }
+            }
+            catch (error) {
+                logger.warn(`⚠️ Failed to read requirements.txt: ${safeError(error)}`);
+            }
+        }
+        // pyproject.toml 간단 파싱
+        const pyprojectPath = (0,external_path_.join)(rootPath, "pyproject.toml");
+        if ((0,external_fs_.existsSync)(pyprojectPath)) {
+            try {
+                const content = await (0,promises_namespaceObject.readFile)(pyprojectPath, "utf-8");
+                this.parsePyprojectToml(content, packages);
+            }
+            catch (error) {
+                logger.warn(`⚠️ Failed to read pyproject.toml: ${safeError(error)}`);
+            }
+        }
+        return { packages };
+    }
+    /**
+     * pyproject.toml에서 dependencies 추출
+     * [project] dependencies 배열 또는 [tool.poetry.dependencies] 섹션만 파싱
+     */
+    parsePyprojectToml(content, packages) {
+        // 1. PEP 621: [project] dependencies = ["fastapi>=0.100", ...]
+        const pep621Match = content.match(/\[project\][^[]*?dependencies\s*=\s*\[([\s\S]*?)\]/);
+        if (pep621Match) {
+            const entries = pep621Match[1].matchAll(/"([a-zA-Z0-9_-]+)/g);
+            for (const m of entries) {
+                const pkg = m[1].toLowerCase();
+                if (pkg && !packages.includes(pkg))
+                    packages.push(pkg);
+            }
+        }
+        // 2. Poetry: [tool.poetry.dependencies] 섹션의 키
+        const poetryMatch = content.match(/\[tool\.poetry\.dependencies\]([\s\S]*?)(?:\n\[|$)/);
+        if (poetryMatch) {
+            const lines = poetryMatch[1].split("\n");
+            for (const line of lines) {
+                const kv = line.match(/^([a-zA-Z0-9_-]+)\s*=/);
+                if (kv) {
+                    const pkg = kv[1].toLowerCase();
+                    if (pkg !== "python" && !packages.includes(pkg))
+                        packages.push(pkg);
+                }
+            }
+        }
+    }
+    /**
+     * FastAPI 프로젝트 여부 확인
+     */
+    isFastAPI(reqs) {
+        return reqs.packages.includes("fastapi");
     }
     /**
      * 의존성 존재 확인
@@ -49653,214 +49557,8 @@ class FrameworkDetector {
         // 버전 문자열에서 실제 버전 번호만 추출 (^, ~, >= 등 제거)
         return version.replace(/^[\^~>=<]+/, "");
     }
-    /**
-     * 프레임워크 신뢰도 평가
-     */
-    getConfidenceReason(framework) {
-        switch (framework.name) {
-            case "nestjs":
-                return "@nestjs/core dependency found in package.json";
-            case "nextjs":
-                return "next dependency found in package.json";
-            case "react":
-                return "react dependency found in package.json";
-            case "express":
-                return "express dependency found in package.json (medium confidence)";
-            case "vanilla":
-                return "No framework-specific patterns detected";
-            default:
-                return "Unknown";
-        }
-    }
 }
 //# sourceMappingURL=detector.js.map
-;// CONCATENATED MODULE: ./dist/utils/config-loader.js
-
-
-
-
-
-/**
- * Configuration Loader
- * .github/dialectic-pr.json 파일을 로드하고 검증
- */
-class ConfigLoader {
-    defaultConfig = {
-        model: DEFAULT_MODEL,
-        language: "en",
-        exclude_patterns: [],
-        strategies: {
-            small: { maxTokens: 16000 },
-            medium: { maxTokens: 12000 },
-            large: { maxTokens: 8000 },
-        },
-    };
-    /** Deprecated field names that should trigger a warning */
-    static DEPRECATED_FIELDS = [
-        "context_files",
-        "false_positive_files",
-        "false_positive_patterns",
-        "framework_specific",
-        "conventions",
-    ];
-    /**
-     * 설정 파일 로드
-     * @param repoPath 저장소 루트 경로
-     * @param configPath 커스텀 설정 파일 경로 (선택적)
-     */
-    async load(repoPath, configPath) {
-        const configFilePath = configPath || (0,external_path_.join)(repoPath, ".github/dialectic-pr.json");
-        // 설정 파일이 없으면 기본 설정 사용
-        if (!(0,external_fs_.existsSync)(configFilePath)) {
-            logger.info("No config file found, using default configuration");
-            return this.defaultConfig;
-        }
-        try {
-            const content = await (0,promises_namespaceObject.readFile)(configFilePath, "utf-8");
-            const userConfig = JSON.parse(content);
-            // Deprecation warnings
-            this.warnDeprecatedFields(userConfig);
-            // 기본 설정과 병합
-            const mergedConfig = {
-                ...this.defaultConfig,
-                ...this.pickValidFields(userConfig),
-                strategies: {
-                    ...this.defaultConfig.strategies,
-                    ...userConfig.strategies,
-                },
-            };
-            this.validateConfig(mergedConfig);
-            logger.info(`Loaded config from ${configFilePath}`);
-            return mergedConfig;
-        }
-        catch (error) {
-            if (error instanceof ConfigError) {
-                throw error;
-            }
-            throw new ConfigError(`Failed to load config from ${configFilePath}: ${safeError(error)}`, { path: configFilePath, error });
-        }
-    }
-    /**
-     * .github/review-guardrails.json 자동 감지 및 로드
-     */
-    async loadGuardrails(repoPath) {
-        const guardrailsPath = (0,external_path_.join)(repoPath, ".github/review-guardrails.json");
-        if (!(0,external_fs_.existsSync)(guardrailsPath)) {
-            return {};
-        }
-        try {
-            const content = await (0,promises_namespaceObject.readFile)(guardrailsPath, "utf-8");
-            const parsed = JSON.parse(content);
-            // 배열 형식 [...] → { patterns: [...] }
-            if (Array.isArray(parsed)) {
-                const validPatterns = parsed.filter((p) => this.isValidFPPattern(p));
-                logger.info(`Loaded ${validPatterns.length} guardrail patterns from ${guardrailsPath}`);
-                return { patterns: validPatterns };
-            }
-            // 객체 형식 { patterns?: [...], disabled_patterns?: [...] }
-            const result = {};
-            if (Array.isArray(parsed.patterns)) {
-                result.patterns = parsed.patterns.filter((p) => this.isValidFPPattern(p));
-            }
-            if (Array.isArray(parsed.disabled_patterns)) {
-                result.disabled_patterns = parsed.disabled_patterns;
-            }
-            logger.info(`Loaded guardrails from ${guardrailsPath}: ${result.patterns?.length ?? 0} patterns, ${result.disabled_patterns?.length ?? 0} disabled`);
-            return result;
-        }
-        catch (error) {
-            logger.warn(`Failed to load guardrails from ${guardrailsPath}: ${safeError(error)}`);
-            return {};
-        }
-    }
-    /**
-     * CLAUDE.md 자동 감지 및 로드
-     */
-    async loadClaudeMd(repoPath) {
-        const claudeMdPath = (0,external_path_.join)(repoPath, "CLAUDE.md");
-        if (!(0,external_fs_.existsSync)(claudeMdPath)) {
-            return "";
-        }
-        try {
-            const content = await (0,promises_namespaceObject.readFile)(claudeMdPath, "utf-8");
-            logger.info(`Loaded project context from CLAUDE.md`);
-            return content;
-        }
-        catch (error) {
-            logger.warn(`Failed to load CLAUDE.md: ${safeError(error)}`);
-            return "";
-        }
-    }
-    /**
-     * 설정 검증
-     */
-    validateConfig(config) {
-        // 모델 이름 검증
-        if (!config.model || typeof config.model !== "string") {
-            throw new ConfigError("Invalid model configuration");
-        }
-        // Strategies 검증
-        if (!config.strategies || typeof config.strategies !== "object") {
-            throw new ConfigError("Invalid strategies configuration");
-        }
-        const requiredStrategies = ["small", "medium", "large"];
-        for (const strategy of requiredStrategies) {
-            const strategyConfig = config.strategies[strategy];
-            if (!strategyConfig ||
-                typeof strategyConfig.maxTokens !== "number") {
-                throw new ConfigError(`Invalid strategy configuration for: ${strategy}`);
-            }
-        }
-        // Exclude patterns 검증
-        if (!Array.isArray(config.exclude_patterns)) {
-            throw new ConfigError("exclude_patterns must be an array");
-        }
-    }
-    /**
-     * Pick only valid DialecticConfig fields from user config
-     */
-    pickValidFields(userConfig) {
-        const result = {};
-        if (typeof userConfig.model === "string")
-            result.model = userConfig.model;
-        if (typeof userConfig.language === "string")
-            result.language = userConfig.language;
-        if (Array.isArray(userConfig.exclude_patterns)) {
-            result.exclude_patterns = userConfig.exclude_patterns;
-        }
-        return result;
-    }
-    /**
-     * Warn about deprecated config fields
-     */
-    warnDeprecatedFields(userConfig) {
-        for (const field of ConfigLoader.DEPRECATED_FIELDS) {
-            if (field in userConfig) {
-                logger.warn(`⚠️  Config field "${field}" is deprecated and will be ignored. ` +
-                    `Use .github/review-guardrails.json for FP patterns or CLAUDE.md for project context.`);
-            }
-        }
-    }
-    /**
-     * FP 패턴 유효성 검증
-     */
-    isValidFPPattern(raw) {
-        if (typeof raw !== "object" || raw === null)
-            return false;
-        const obj = raw;
-        return (typeof obj.id === "string" &&
-            typeof obj.category === "string" &&
-            typeof obj.explanation === "string" &&
-            Array.isArray(obj.falsePositiveIndicators));
-    }
-    /**
-     * 기본 설정 가져오기
-     */
-    getDefaultConfig() {
-        return { ...this.defaultConfig };
-    }
-}
-//# sourceMappingURL=config-loader.js.map
 ;// CONCATENATED MODULE: ./dist/false-positive/builtin-patterns.js
 /**
  * Built-in False Positive Patterns
@@ -50177,6 +49875,26 @@ const BUILTIN_PATTERNS = [
             "fix the underlying issue",
         ],
     },
+    {
+        id: "react-component-inside-component",
+        category: "performance",
+        explanation: "Flagging components defined inside other components is correct — this causes remount on every render, destroying state and DOM",
+        falsePositiveIndicators: [
+            "nested component is fine",
+            "inner component is simple",
+            "component definition inside render",
+        ],
+    },
+    {
+        id: "react-barrel-import",
+        category: "performance",
+        explanation: "Barrel file imports (index.ts re-exports) from external/third-party packages can pull in unused modules and increase bundle size",
+        falsePositiveIndicators: [
+            "barrel import is convenient",
+            "re-export is fine for organization",
+            "index import is standard",
+        ],
+    },
     // ============================================================================
     // Next.js Specific
     // ============================================================================
@@ -50206,6 +49924,26 @@ const BUILTIN_PATTERNS = [
         falsePositiveIndicators: [
             "prefer named exports",
             "default export anti-pattern",
+        ],
+    },
+    {
+        id: "nextjs-suspense-boundary",
+        category: "validation",
+        explanation: "Strategic Suspense boundaries enable streaming and parallel loading of independent UI sections",
+        falsePositiveIndicators: [
+            "unnecessary Suspense",
+            "Suspense is overkill",
+            "remove Suspense wrapper",
+        ],
+    },
+    {
+        id: "nextjs-rsc-serialization",
+        category: "performance",
+        explanation: "Minimizing props at RSC boundaries reduces serialization overhead between server and client components",
+        falsePositiveIndicators: [
+            "pass full object to client",
+            "props should include all data",
+            "unnecessary prop splitting",
         ],
     },
     // ============================================================================
@@ -50288,6 +50026,46 @@ function getAllPatternIds() {
     return BUILTIN_PATTERNS.map((p) => p.id);
 }
 //# sourceMappingURL=builtin-patterns.js.map
+;// CONCATENATED MODULE: ./dist/false-positive/project-rules-loader.js
+
+
+/**
+ * Project Rules Loader
+ * 빌트인 + 프레임워크별 FP 패턴을 조합하고, disabled 패턴을 필터링합니다.
+ * 순수 함수 — 파일 I/O 없음.
+ */
+class ProjectRulesLoader {
+    frameworkService;
+    constructor(frameworkService) {
+        this.frameworkService = frameworkService;
+    }
+    /**
+     * FP 패턴 조합
+     * @param frameworkName 감지된 프레임워크 이름
+     * @param disabledPatterns 비활성화할 패턴 ID 목록
+     */
+    load(frameworkName, disabledPatterns = []) {
+        logger.info("📜 Loading project rules...");
+        // 1. Start with builtin patterns
+        let patterns = [...BUILTIN_PATTERNS];
+        // 2. Add framework-specific patterns
+        const framework = this.frameworkService.getFramework(frameworkName);
+        if (framework) {
+            const frameworkPatterns = framework.getFalsePositivePatterns();
+            patterns = [...patterns, ...frameworkPatterns];
+            logger.debug(`Added ${frameworkPatterns.length} patterns for ${frameworkName}`);
+        }
+        // 3. Filter out disabled patterns
+        if (disabledPatterns.length > 0) {
+            const disabledSet = new Set(disabledPatterns);
+            patterns = patterns.filter((p) => !disabledSet.has(p.id));
+            logger.debug(`Disabled ${disabledPatterns.length} patterns`);
+        }
+        logger.success(`✅ Loaded ${patterns.length} FP patterns`);
+        return patterns;
+    }
+}
+//# sourceMappingURL=project-rules-loader.js.map
 ;// CONCATENATED MODULE: ./dist/frameworks/base-framework.js
 
 
@@ -50298,28 +50076,10 @@ function getAllPatternIds() {
 class BaseFramework {
     /**
      * 기본 False Positive 패턴 (공통)
+     * 공통 패턴은 BUILTIN_PATTERNS에 정의되어 있으므로 빈 배열 반환
      */
     getFalsePositivePatterns() {
-        return [
-            {
-                id: "console-log-intentional",
-                category: "logging",
-                explanation: "Console.log in development/debug code may be intentional",
-                falsePositiveIndicators: [
-                    "console.log should be removed",
-                    "use proper logging",
-                ],
-            },
-            {
-                id: "any-type-intentional",
-                category: "validation",
-                explanation: "Some 'any' types are intentional for flexibility",
-                falsePositiveIndicators: [
-                    "avoid using any",
-                    "use proper type",
-                ],
-            },
-        ];
+        return [];
     }
     /**
      * 기본 영향 영역 감지 (공통)
@@ -50357,13 +50117,13 @@ class BaseFramework {
             },
             // High: Source code
             {
-                pattern: /src\/.*\.(ts|tsx|js|jsx)$/,
+                pattern: /src\/.*\.(ts|tsx|js|jsx|py)$/,
                 priority: "high",
                 reason: "Source code",
             },
             // Normal: General code
             {
-                pattern: /\.(ts|tsx|js|jsx)$/,
+                pattern: /\.(ts|tsx|js|jsx|py)$/,
                 priority: "normal",
                 reason: "Code file",
             },
@@ -50385,7 +50145,8 @@ class BaseFramework {
      */
     isCriticalModule(filePath) {
         return (CRITICAL_MODULE_PATTERN.test(filePath) ||
-            /\.(guard|middleware)\.(ts|js)$/.test(filePath));
+            /\.(guard|middleware)\.(ts|js)$/.test(filePath) ||
+            /middleware\.py$/.test(filePath));
     }
     /**
      * 컨텍스트 플래그 추출 (기본)
@@ -50394,6 +50155,8 @@ class BaseFramework {
         return {
             testChanged: files.some((f) => isTestFile(f)),
             schemaChanged: files.some((f) => isSchemaFile(f)),
+            apiRoutesChanged: false,
+            controllersChanged: false,
             criticalModule: files.some((f) => this.isCriticalModule(f)),
             configOnly: files.every((f) => isConfigFile(f)),
         };
@@ -50431,46 +50194,19 @@ class FrameworkRegistry {
     }
 }
 //# sourceMappingURL=base-framework.js.map
-;// CONCATENATED MODULE: ./dist/false-positive/project-rules-loader.js
-
-
+;// CONCATENATED MODULE: ./dist/frameworks/framework-service.js
 
 /**
- * Project Rules Loader
- * 빌트인 + 프레임워크별 FP 패턴을 조합하고, disabled 패턴을 필터링합니다.
- * 순수 함수 — 파일 I/O 없음.
+ * Framework Service
+ * FrameworkRegistry를 래핑하는 기본 구현체
  */
-class ProjectRulesLoader {
-    /**
-     * FP 패턴 조합
-     * @param frameworkName 감지된 프레임워크 이름
-     * @param disabledPatterns 비활성화할 패턴 ID 목록
-     */
-    load(frameworkName, disabledPatterns = []) {
-        logger.info("📜 Loading project rules...");
-        // 1. Start with builtin patterns
-        let patterns = [...BUILTIN_PATTERNS];
-        // 2. Add framework-specific patterns
-        const framework = FrameworkRegistry.get(frameworkName);
-        if (framework) {
-            const frameworkPatterns = framework.getFalsePositivePatterns();
-            patterns = [...patterns, ...frameworkPatterns];
-            logger.debug(`Added ${frameworkPatterns.length} patterns for ${frameworkName}`);
-        }
-        // 3. Filter out disabled patterns
-        if (disabledPatterns.length > 0) {
-            const disabledSet = new Set(disabledPatterns);
-            patterns = patterns.filter((p) => !disabledSet.has(p.id));
-            logger.debug(`Disabled ${disabledPatterns.length} patterns`);
-        }
-        logger.success(`✅ Loaded ${patterns.length} FP patterns`);
-        return patterns;
+class FrameworkService {
+    getFramework(name) {
+        return FrameworkRegistry.get(name);
     }
 }
-//# sourceMappingURL=project-rules-loader.js.map
-;// CONCATENATED MODULE: ./dist/core/review-engine.js
-
-
+//# sourceMappingURL=framework-service.js.map
+;// CONCATENATED MODULE: ./dist/core/review-factory.js
 
 
 
@@ -50482,8 +50218,34 @@ class ProjectRulesLoader {
 
 
 /**
+ * Create all components needed for a review
+ */
+function createReviewComponents(options, config) {
+    const privacyGuard = new PrivacyGuard();
+    const claudeAdapter = new ClaudeAdapter(options.anthropicApiKey, config.model);
+    const githubAdapter = new GitHubAdapter(options.githubToken);
+    const frameworkService = new FrameworkService();
+    const excludeFilter = new ExcludeFilter(config.exclude_patterns);
+    const smartFilter = new SmartFilter();
+    const frameworkDetector = new FrameworkDetector();
+    const prAnalyzer = new PRAnalyzer(excludeFilter, smartFilter, frameworkDetector, frameworkService);
+    const strategySelector = new StrategySelector();
+    const rulesLoader = new ProjectRulesLoader(frameworkService);
+    return {
+        privacyGuard,
+        claudeAdapter,
+        githubAdapter,
+        prAnalyzer,
+        strategySelector,
+        rulesLoader,
+        frameworkService,
+    };
+}
+//# sourceMappingURL=review-factory.js.map
+;// CONCATENATED MODULE: ./dist/core/review-formatter.js
+/**
  * Convert model ID to display name
- * e.g. "claude-opus-4-6" → "Claude Opus 4.6"
+ * e.g. "claude-opus-4-8" → "Claude Opus 4.8"
  */
 function formatModelName(modelId) {
     const match = modelId.match(/^claude-(\w+)-(\d+)-(\d+)/);
@@ -50598,6 +50360,1209 @@ function formatReviewBody(result, analysis, modelId) {
     lines.push("*💡 Tip: `skip-ai-review` 라벨을 추가하면 자동 리뷰를 건너뜁니다*");
     return lines.join("\n");
 }
+//# sourceMappingURL=review-formatter.js.map
+;// CONCATENATED MODULE: ./dist/frameworks/nestjs.js
+
+/**
+ * NestJS Framework Implementation
+ * NestJS 프로젝트에 특화된 리뷰 룰과 패턴
+ */
+class NestJSFramework extends BaseFramework {
+    name = "nestjs";
+    getReviewInstructions() {
+        return `
+FRAMEWORK: NestJS
+BEST_PRACTICES:
+  dependency_injection:
+    - use_constructor_injection: true
+    - avoid_property_injection: true
+  error_handling:
+    - use_exception_filters: true
+    - throw_http_exceptions: true
+  validation:
+    - use_class_validator_dtos: true
+  architecture:
+    - avoid_circular_dependencies: true
+    - single_responsibility_modules: true
+  guards_and_interceptors:
+    - guards_for_authorization: true
+    - interceptors_for_transformation: true
+  modules:
+    - providers_properly_exported: true
+    - avoid_barrel_imports_in_modules: true
+COMMON_FALSE_POSITIVES:
+  - "throw new Error" is acceptable with AllExceptionsFilter
+  - "new" keyword is intentional for DTOs and entities
+  - Logger dependency injection is project pattern
+  - @Inject() for custom providers is correct
+  - circular dependency warnings may be false positive with forwardRef
+`.trim();
+    }
+    getFalsePositivePatterns() {
+        return [
+            {
+                id: "nestjs-circular-dependency",
+                category: "dependency-injection",
+                explanation: "forwardRef() handles intentional circular dependencies",
+                falsePositiveIndicators: [
+                    "circular dependency detected",
+                    "module import cycle",
+                ],
+            },
+            {
+                id: "nestjs-decorator-return",
+                category: "validation",
+                explanation: "Decorators don't need explicit return in many cases",
+                falsePositiveIndicators: [
+                    "decorator should return",
+                    "missing return statement in decorator",
+                ],
+            },
+        ];
+    }
+    detectAffectedAreas(files) {
+        const areas = super.detectAffectedAreas(files);
+        // NestJS-specific areas
+        if (files.some((f) => f.match(/\.(controller|guard|interceptor)\.ts$/))) {
+            areas.push("🎯 HTTP Layer");
+        }
+        if (files.some((f) => f.match(/\.(service|repository)\.ts$/))) {
+            areas.push("⚙️ Business Logic");
+        }
+        if (files.some((f) => f.includes(".entity.ts"))) {
+            areas.push("🗄️ Database Schema");
+        }
+        if (files.some((f) => f.includes(".module.ts"))) {
+            areas.push("📦 Module Structure");
+        }
+        if (files.some((f) => f.includes(".dto.ts"))) {
+            areas.push("📋 Data Transfer");
+        }
+        if (files.some((f) => f.includes(".pipe.ts"))) {
+            areas.push("🔧 Validation Pipes");
+        }
+        return [...new Set(areas)]; // Remove duplicates
+    }
+    getPriorityRules() {
+        return [
+            // Critical: HTTP security layer
+            {
+                pattern: /\.(controller|guard|middleware)\.ts$/,
+                priority: "critical",
+                reason: "HTTP security layer",
+            },
+            // Critical: Security-related
+            {
+                pattern: /\/(auth|security|payments|billing)\//,
+                priority: "critical",
+                reason: "Security-critical module",
+            },
+            // High: Business logic
+            {
+                pattern: /\.(service|repository)\.ts$/,
+                priority: "high",
+                reason: "Business logic",
+            },
+            // High: Database schema
+            {
+                pattern: /\.entity\.ts$/,
+                priority: "high",
+                reason: "Database schema",
+            },
+            // High: Interceptors
+            {
+                pattern: /\.interceptor\.ts$/,
+                priority: "high",
+                reason: "Request/Response transformation",
+            },
+            // Normal: DTOs and pipes
+            {
+                pattern: /\.(dto|pipe)\.ts$/,
+                priority: "normal",
+                reason: "Data transfer/validation",
+            },
+            // Normal: Modules
+            {
+                pattern: /\.module\.ts$/,
+                priority: "normal",
+                reason: "Module definition",
+            },
+            ...super.getPriorityRules(),
+        ];
+    }
+    isCriticalModule(filePath) {
+        if (super.isCriticalModule(filePath))
+            return true;
+        const nestjsCriticalPatterns = [
+            /\/(auth|security|payments|billing)\//,
+            /\.(guard|middleware)\.ts$/,
+            /auth\.(controller|service)\.ts$/,
+        ];
+        return nestjsCriticalPatterns.some((p) => p.test(filePath));
+    }
+    extractContextFlags(files) {
+        const baseFlags = super.extractContextFlags(files);
+        return {
+            ...baseFlags,
+            controllersChanged: files.some((f) => f.includes(".controller.ts")),
+            guardsChanged: files.some((f) => f.includes(".guard.ts")),
+            modulesChanged: files.some((f) => f.includes(".module.ts")),
+            entitiesChanged: files.some((f) => f.includes(".entity.ts")),
+        };
+    }
+}
+//# sourceMappingURL=nestjs.js.map
+;// CONCATENATED MODULE: ./dist/frameworks/nextjs.js
+
+/**
+ * Next.js Framework Implementation
+ * Next.js 프로젝트에 특화된 리뷰 룰과 패턴
+ */
+class NextJSFramework extends BaseFramework {
+    name = "nextjs";
+    getReviewInstructions() {
+        return `
+FRAMEWORK: Next.js
+BEST_PRACTICES:
+  server_performance: [CRITICAL]
+    - authenticate_server_actions_like_api_routes: true
+    - minimize_serialization_at_rsc_boundaries: true
+    - parallel_data_fetching_with_component_composition: true
+    - prevent_waterfall_chains_in_api_routes: true
+  components:
+    - prefer_server_components: true
+    - mark_client_components_explicitly: true
+    - avoid_unnecessary_use_client: true
+    - strategic_suspense_boundaries: true
+  data_fetching:
+    - use_async_server_components: true
+    - avoid_useeffect_for_data: true
+    - use_server_actions_for_mutations: true
+    - per_request_dedup_with_react_cache: true
+  api_routes:
+    - validate_all_input: true
+    - use_proper_http_status_codes: true
+    - handle_errors_gracefully: true
+  optimization:
+    - use_next_image: true
+    - check_client_js_bundle_size: true
+    - use_dynamic_imports_for_heavy_components: true
+    - defer_non_critical_third_party: true
+    - conditional_module_loading: true
+    - use_after_for_non_blocking_ops: true
+  caching:
+    - hoist_static_io_to_module_level: true
+    - cross_request_lru_caching: true
+  routing:
+    - use_app_router_conventions: true
+    - proper_loading_and_error_boundaries: true
+  metadata:
+    - use_generateMetadata_for_seo: true
+COMMON_FALSE_POSITIVES:
+  - async Server Components without useEffect is correct
+  - "use client" directive is intentional marking
+  - default export for pages is required convention
+  - Server Actions (use server) are intentional
+  - Dynamic route params typing is Next.js pattern
+  - React.cache() for per-request dedup is correct
+  - next/server after() for non-blocking ops is correct
+  - Auth checks inside Server Actions is correct security
+`.trim();
+    }
+    getFalsePositivePatterns() {
+        return [
+            {
+                id: "nextjs-server-component-async",
+                category: "validation",
+                explanation: "Async Server Components are the recommended pattern in Next.js 13+",
+                falsePositiveIndicators: [
+                    "async component without useEffect",
+                    "await in component body",
+                    "should use useEffect for data fetching",
+                ],
+            },
+            {
+                id: "nextjs-use-client-directive",
+                category: "validation",
+                explanation: "'use client' marks intentional client components",
+                falsePositiveIndicators: [
+                    "use client is unnecessary",
+                    "should be server component",
+                ],
+            },
+            {
+                id: "nextjs-server-action",
+                category: "validation",
+                explanation: "'use server' directive for Server Actions is correct",
+                falsePositiveIndicators: [
+                    "use server is unknown",
+                    "invalid directive",
+                ],
+            },
+            {
+                id: "nextjs-image-component",
+                category: "performance",
+                explanation: "next/image is the optimized way to handle images",
+                falsePositiveIndicators: [
+                    "should use native img",
+                    "next/image is overkill",
+                ],
+            },
+            {
+                id: "nextjs-react-cache-dedup",
+                category: "performance",
+                explanation: "React.cache() for per-request deduplication is the correct pattern in Next.js Server Components",
+                falsePositiveIndicators: [
+                    "unnecessary caching",
+                    "remove React.cache wrapper",
+                    "duplicate data fetching",
+                ],
+            },
+            {
+                id: "nextjs-after-non-blocking",
+                category: "validation",
+                explanation: "next/server after() is the correct pattern for non-blocking operations like analytics and logging",
+                falsePositiveIndicators: [
+                    "after is not awaited",
+                    "fire-and-forget is unsafe",
+                    "missing await for after",
+                ],
+            },
+            {
+                id: "nextjs-server-action-auth",
+                category: "authentication",
+                explanation: "Authentication checks inside Server Actions is correct security practice, similar to API route protection",
+                falsePositiveIndicators: [
+                    "redundant auth check in server action",
+                    "auth already checked in middleware",
+                    "duplicate authentication",
+                ],
+            },
+        ];
+    }
+    detectAffectedAreas(files) {
+        const areas = super.detectAffectedAreas(files);
+        // Next.js-specific areas
+        if (files.some((f) => f.includes("/api/") || f.includes("/route."))) {
+            areas.push("🔌 API Routes");
+        }
+        if (files.some((f) => f.includes("page.tsx") || f.includes("page.ts"))) {
+            areas.push("📄 Pages");
+        }
+        if (files.some((f) => f.includes("layout.tsx") || f.includes("layout.ts"))) {
+            areas.push("🎨 Layouts");
+        }
+        if (files.some((f) => f.includes("/components/"))) {
+            areas.push("🧩 Components");
+        }
+        if (files.some((f) => f.includes("loading.tsx") || f.includes("error.tsx"))) {
+            areas.push("⏳ Loading/Error States");
+        }
+        if (files.some((f) => f.includes("middleware.ts"))) {
+            areas.push("🔧 Middleware");
+        }
+        if (files.some((f) => f.includes("/actions/") || f.includes(".action.ts"))) {
+            areas.push("⚡ Server Actions");
+        }
+        return [...new Set(areas)];
+    }
+    getPriorityRules() {
+        return [
+            // Critical: API endpoints
+            {
+                pattern: /\/api\/.*\.(ts|js)$/,
+                priority: "critical",
+                reason: "API endpoint",
+            },
+            {
+                pattern: /route\.(ts|js)$/,
+                priority: "critical",
+                reason: "Route handler",
+            },
+            // Critical: Auth-related
+            {
+                pattern: /\/auth\/.*\.(tsx?|jsx?)$/,
+                priority: "critical",
+                reason: "Auth logic",
+            },
+            // Critical: Middleware
+            {
+                pattern: /middleware\.(ts|js)$/,
+                priority: "critical",
+                reason: "Middleware",
+            },
+            // High: Pages and layouts
+            {
+                pattern: /page\.(tsx|ts|jsx|js)$/,
+                priority: "high",
+                reason: "Page component",
+            },
+            {
+                pattern: /layout\.(tsx|ts|jsx|js)$/,
+                priority: "high",
+                reason: "Layout component",
+            },
+            // High: Server actions
+            {
+                pattern: /\.action\.(ts|js)$/,
+                priority: "high",
+                reason: "Server Action",
+            },
+            // Normal: Components
+            {
+                pattern: /\/components\/.*\.(tsx|jsx)$/,
+                priority: "normal",
+                reason: "Component",
+            },
+            ...super.getPriorityRules(),
+        ];
+    }
+    isCriticalModule(filePath) {
+        if (super.isCriticalModule(filePath))
+            return true;
+        const nextjsCriticalPatterns = [
+            /\/api\//,
+            /route\.(ts|js)$/,
+            /middleware\.(ts|js)$/,
+            /\/auth\//,
+        ];
+        return nextjsCriticalPatterns.some((p) => p.test(filePath));
+    }
+    extractContextFlags(files) {
+        const baseFlags = super.extractContextFlags(files);
+        return {
+            ...baseFlags,
+            apiRoutesChanged: files.some((f) => f.includes("/api/") || f.includes("route.")),
+            pagesChanged: files.some((f) => f.includes("page.")),
+            layoutsChanged: files.some((f) => f.includes("layout.")),
+            middlewareChanged: files.some((f) => f.includes("middleware.")),
+            serverActionsChanged: files.some((f) => f.includes(".action.") || f.includes("/actions/")),
+        };
+    }
+}
+//# sourceMappingURL=nextjs.js.map
+;// CONCATENATED MODULE: ./dist/frameworks/react.js
+
+/**
+ * React Framework Implementation
+ * React 프로젝트에 특화된 리뷰 룰과 패턴
+ */
+class ReactFramework extends BaseFramework {
+    name = "react";
+    getReviewInstructions() {
+        return `
+FRAMEWORK: React
+BEST_PRACTICES:
+  waterfalls_and_async: [CRITICAL]
+    - defer_await_until_needed: true
+    - parallelize_independent_operations: true
+  bundle_size: [CRITICAL]
+    - avoid_barrel_file_imports: true
+    - dynamic_imports_for_heavy_components: true
+  hooks:
+    - follow_rules_of_hooks: true
+    - include_all_dependencies: true
+    - cleanup_effects: true
+    - avoid_unnecessary_effects: true
+    - narrow_effect_dependencies: true
+    - interaction_logic_in_event_handlers: true
+  performance:
+    - use_memo_appropriately: true
+    - use_callback_for_child_optimization: true
+    - avoid_inline_object_creation_in_render: true
+    - dont_define_components_inside_components: true
+    - use_functional_setState: true
+    - use_lazy_state_initialization: true
+    - use_transitions_for_non_urgent_updates: true
+    - use_virtualization_for_long_lists: true
+  rendering:
+    - hoist_static_jsx_outside_component: true
+    - use_explicit_conditional_rendering: true
+    - prevent_hydration_mismatch: true
+  state:
+    - colocate_state: true
+    - lift_when_needed: true
+    - avoid_prop_drilling_with_context: true
+    - calculate_derived_state_during_render: true
+  lists:
+    - stable_unique_keys: true
+    - avoid_index_as_key_for_dynamic_lists: true
+  components:
+    - prefer_composition_over_inheritance: true
+    - single_responsibility: true
+    - controlled_vs_uncontrolled: be_consistent
+  js_performance:
+    - use_set_map_for_O1_lookups: true
+    - avoid_layout_thrashing: true
+    - hoist_regexp_creation: true
+COMMON_FALSE_POSITIVES:
+  - intentional dependency omissions with eslint-disable
+  - memo usage is performance optimization
+  - empty dependency array for mount-only effects is correct
+  - useCallback for event handlers passed to children is valid
+  - index as key is acceptable for static lists
+  - simple expressions do not need useMemo
+  - internal module barrel imports have minimal impact
+  - deriving state during render is correct pattern
+`.trim();
+    }
+    getFalsePositivePatterns() {
+        return [
+            {
+                id: "react-empty-deps-array",
+                category: "validation",
+                explanation: "Empty dependency array is correct for mount-only effects",
+                falsePositiveIndicators: [
+                    "missing dependencies in useEffect",
+                    "empty dependency array",
+                    "should include all dependencies",
+                ],
+            },
+            {
+                id: "react-memo-usage",
+                category: "validation",
+                explanation: "React.memo is a valid performance optimization pattern",
+                falsePositiveIndicators: [
+                    "unnecessary memo",
+                    "premature optimization",
+                    "memo is not needed",
+                ],
+            },
+            {
+                id: "react-use-callback",
+                category: "validation",
+                explanation: "useCallback prevents unnecessary re-renders of child components",
+                falsePositiveIndicators: [
+                    "useCallback is unnecessary",
+                    "inline function is fine",
+                ],
+            },
+            {
+                id: "react-eslint-disable-deps",
+                category: "validation",
+                explanation: "eslint-disable for exhaustive-deps may be intentional",
+                falsePositiveIndicators: [
+                    "remove eslint-disable",
+                    "fix dependency array",
+                ],
+            },
+            {
+                id: "react-simple-usememo",
+                category: "performance",
+                explanation: "Simple expressions (primitives, short calculations) do not need useMemo wrapping",
+                falsePositiveIndicators: [
+                    "wrap in useMemo",
+                    "memoize this value",
+                    "should use useMemo",
+                ],
+            },
+            {
+                id: "react-barrel-import-internal",
+                category: "performance",
+                explanation: "Barrel imports from internal modules have minimal bundle impact when tree-shaking is configured",
+                falsePositiveIndicators: [
+                    "barrel import increases bundle",
+                    "import from barrel file",
+                    "re-export causes larger bundle",
+                ],
+            },
+            {
+                id: "react-derived-state",
+                category: "validation",
+                explanation: "Calculating derived state during render is the correct React pattern instead of using useEffect to sync state",
+                falsePositiveIndicators: [
+                    "derive state in useEffect",
+                    "should store derived value in state",
+                    "missing state update for derived value",
+                ],
+            },
+        ];
+    }
+    detectAffectedAreas(files) {
+        const areas = super.detectAffectedAreas(files);
+        // React-specific areas
+        if (files.some((f) => f.includes("/components/"))) {
+            areas.push("🧩 Components");
+        }
+        if (files.some((f) => f.includes("/hooks/") || f.includes(".hook."))) {
+            areas.push("🪝 Hooks");
+        }
+        if (files.some((f) => f.includes("/store/") || f.includes("/redux/") || f.includes("/zustand/"))) {
+            areas.push("📦 State Management");
+        }
+        if (files.some((f) => f.includes("/context/") || f.includes(".context."))) {
+            areas.push("🔄 Context");
+        }
+        if (files.some((f) => f.includes("/utils/") || f.includes("/helpers/"))) {
+            areas.push("🔧 Utilities");
+        }
+        if (files.some((f) => f.includes("/services/") || f.includes("/api/"))) {
+            areas.push("🌐 API/Services");
+        }
+        return [...new Set(areas)];
+    }
+    getPriorityRules() {
+        return [
+            // Critical: Auth and security
+            {
+                pattern: /\/(auth|security)\//,
+                priority: "critical",
+                reason: "Security-critical",
+            },
+            // High: Custom hooks
+            {
+                pattern: /\/hooks\/.*\.(ts|tsx|js|jsx)$/,
+                priority: "high",
+                reason: "Custom hook",
+            },
+            {
+                pattern: /\.hook\.(ts|tsx|js|jsx)$/,
+                priority: "high",
+                reason: "Custom hook",
+            },
+            // High: State management
+            {
+                pattern: /\/(store|redux|zustand)\//,
+                priority: "high",
+                reason: "State management",
+            },
+            // High: Context
+            {
+                pattern: /\/context\/.*\.(ts|tsx|js|jsx)$/,
+                priority: "high",
+                reason: "React Context",
+            },
+            // Normal: Components
+            {
+                pattern: /\/components\/.*\.(tsx|jsx)$/,
+                priority: "normal",
+                reason: "React component",
+            },
+            // Normal: Pages (for React Router based apps)
+            {
+                pattern: /\/pages\/.*\.(tsx|jsx)$/,
+                priority: "normal",
+                reason: "Page component",
+            },
+            ...super.getPriorityRules(),
+        ];
+    }
+    isCriticalModule(filePath) {
+        if (super.isCriticalModule(filePath))
+            return true;
+        const reactCriticalPatterns = [
+            /\/(auth|security)\//,
+            /AuthContext/,
+            /useAuth/,
+        ];
+        return reactCriticalPatterns.some((p) => p.test(filePath));
+    }
+    extractContextFlags(files) {
+        const baseFlags = super.extractContextFlags(files);
+        return {
+            ...baseFlags,
+            hooksChanged: files.some((f) => f.includes("/hooks/") || f.includes(".hook.")),
+            storeChanged: files.some((f) => f.includes("/store/") || f.includes("/redux/") || f.includes("/zustand/")),
+            contextChanged: files.some((f) => f.includes("/context/") || f.includes(".context.")),
+            componentsChanged: files.some((f) => f.includes("/components/")),
+        };
+    }
+}
+//# sourceMappingURL=react.js.map
+;// CONCATENATED MODULE: ./dist/frameworks/express.js
+
+/**
+ * Express Framework Implementation
+ * Express 프로젝트에 특화된 리뷰 룰과 패턴
+ */
+class ExpressFramework extends BaseFramework {
+    name = "express";
+    getReviewInstructions() {
+        return `
+FRAMEWORK: Express
+BEST_PRACTICES:
+  middleware:
+    - correct_order: true
+    - error_handlers_last: true
+    - use_next_properly: true
+  async_handling:
+    - use_async_await_with_try_catch: true
+    - or_use_error_middleware: true
+    - wrap_async_handlers: true
+  validation:
+    - validate_all_user_input: true
+    - sanitize_inputs: true
+    - use_validation_libraries: [joi, zod, express-validator]
+  security:
+    - use_helmet: true
+    - implement_rate_limiting: true
+    - prevent_injection: true
+    - cors_configuration: proper
+  routing:
+    - use_router_for_modular_routes: true
+    - restful_conventions: follow
+  error_handling:
+    - centralized_error_handler: true
+    - dont_expose_stack_traces: true
+COMMON_FALSE_POSITIVES:
+  - middleware order is intentional architecture
+  - custom error handler is standard pattern
+  - next() call pattern is correct
+  - async wrapper utility handles errors
+  - response.json() without explicit return is valid
+`.trim();
+    }
+    getFalsePositivePatterns() {
+        return [
+            {
+                id: "express-error-handler",
+                category: "error-handling",
+                explanation: "Custom error handler with 4 params (err, req, res, next) is standard",
+                falsePositiveIndicators: [
+                    "unused next parameter",
+                    "error handler signature",
+                ],
+            },
+            {
+                id: "express-async-wrapper",
+                category: "error-handling",
+                explanation: "Async wrapper utilities (express-async-handler) handle errors",
+                falsePositiveIndicators: [
+                    "unhandled promise rejection",
+                    "missing try-catch in async handler",
+                ],
+            },
+            {
+                id: "express-response-json",
+                category: "validation",
+                explanation: "res.json() without return is valid when it's the last statement",
+                falsePositiveIndicators: [
+                    "missing return before res.json",
+                    "should return res.json",
+                ],
+            },
+            {
+                id: "express-next-call",
+                category: "validation",
+                explanation: "next() call pattern for middleware chaining is correct",
+                falsePositiveIndicators: [
+                    "next() called unnecessarily",
+                    "should not call next",
+                ],
+            },
+        ];
+    }
+    detectAffectedAreas(files) {
+        const areas = super.detectAffectedAreas(files);
+        // Express-specific areas
+        if (files.some((f) => f.includes("/routes/") || f.includes(".routes."))) {
+            areas.push("🛤️ Routes");
+        }
+        if (files.some((f) => f.includes("/middleware/") || f.includes(".middleware."))) {
+            areas.push("🔧 Middleware");
+        }
+        if (files.some((f) => f.includes("/controllers/") || f.includes(".controller."))) {
+            areas.push("🎮 Controllers");
+        }
+        if (files.some((f) => f.includes("/services/") || f.includes(".service."))) {
+            areas.push("⚙️ Services");
+        }
+        if (files.some((f) => f.includes("/models/") || f.includes(".model."))) {
+            areas.push("📊 Models");
+        }
+        if (files.some((f) => f.includes("/validators/") || f.includes(".validator."))) {
+            areas.push("✅ Validators");
+        }
+        return [...new Set(areas)];
+    }
+    getPriorityRules() {
+        return [
+            // Critical: Auth middleware and security
+            {
+                pattern: /\/(auth|security)\/.*\.(ts|js)$/,
+                priority: "critical",
+                reason: "Auth/Security",
+            },
+            {
+                pattern: /auth\.middleware\.(ts|js)$/,
+                priority: "critical",
+                reason: "Auth middleware",
+            },
+            // High: Routes and controllers
+            {
+                pattern: /\/routes\/.*\.(ts|js)$/,
+                priority: "high",
+                reason: "Route definitions",
+            },
+            {
+                pattern: /\.routes?\.(ts|js)$/,
+                priority: "high",
+                reason: "Route file",
+            },
+            {
+                pattern: /\/controllers\/.*\.(ts|js)$/,
+                priority: "high",
+                reason: "Controller",
+            },
+            // High: Middleware
+            {
+                pattern: /\/middleware\/.*\.(ts|js)$/,
+                priority: "high",
+                reason: "Middleware",
+            },
+            // High: Services
+            {
+                pattern: /\/services\/.*\.(ts|js)$/,
+                priority: "high",
+                reason: "Service layer",
+            },
+            // Normal: Models and validators
+            {
+                pattern: /\/models\/.*\.(ts|js)$/,
+                priority: "normal",
+                reason: "Data model",
+            },
+            {
+                pattern: /\/validators\/.*\.(ts|js)$/,
+                priority: "normal",
+                reason: "Validator",
+            },
+            ...super.getPriorityRules(),
+        ];
+    }
+    isCriticalModule(filePath) {
+        if (super.isCriticalModule(filePath))
+            return true;
+        const expressCriticalPatterns = [
+            /\/(auth|security)\//,
+            /auth\.middleware/,
+            /security\.middleware/,
+            /rate[-_]?limit/,
+        ];
+        return expressCriticalPatterns.some((p) => p.test(filePath));
+    }
+    extractContextFlags(files) {
+        const baseFlags = super.extractContextFlags(files);
+        return {
+            ...baseFlags,
+            routesChanged: files.some((f) => f.includes("/routes/") || f.includes(".routes.")),
+            middlewareChanged: files.some((f) => f.includes("/middleware/") || f.includes(".middleware.")),
+            controllersChanged: files.some((f) => f.includes("/controllers/") || f.includes(".controller.")),
+            servicesChanged: files.some((f) => f.includes("/services/") || f.includes(".service.")),
+        };
+    }
+}
+//# sourceMappingURL=express.js.map
+;// CONCATENATED MODULE: ./dist/frameworks/fastapi.js
+
+/**
+ * FastAPI Framework Implementation
+ * Python/FastAPI 프로젝트에 특화된 리뷰 룰과 패턴
+ */
+class FastAPIFramework extends BaseFramework {
+    name = "fastapi";
+    getReviewInstructions() {
+        return `
+FRAMEWORK: FastAPI (Python)
+BEST_PRACTICES:
+  async:
+    - use_async_def_for_io_endpoints: true
+    - use_sync_def_for_cpu_bound: true
+    - avoid_blocking_calls_in_async: true
+  dependency_injection:
+    - use_depends_for_di: true
+    - avoid_global_state: true
+    - compose_dependencies: true
+  validation:
+    - use_pydantic_models: true
+    - validate_request_body_with_basemodel: true
+    - use_field_validators: true
+  database:
+    - use_sqlalchemy_sessions_via_depends: true
+    - avoid_raw_sql_without_parameterization: true
+    - use_alembic_for_migrations: true
+  error_handling:
+    - raise_httpexception_with_status_codes: true
+    - use_exception_handlers: true
+    - dont_expose_internal_errors: true
+  security:
+    - validate_auth_tokens: true
+    - use_depends_for_auth: true
+    - implement_rate_limiting: true
+COMMON_FALSE_POSITIVES:
+  - Pydantic class attributes are not unused variables
+  - Depends() injection parameter is intentional pattern
+  - async def without await is valid for FastAPI route handlers
+  - SQLAlchemy text() is safe with bound parameters
+  - os.environ at module level is standard configuration pattern
+  - bare except with logging is acceptable in background tasks
+`.trim();
+    }
+    getFalsePositivePatterns() {
+        return [
+            {
+                id: "pydantic-class-attrs",
+                category: "validation",
+                explanation: "Pydantic model class attributes define schema, not unused variables",
+                falsePositiveIndicators: [
+                    "unused class attribute",
+                    "class variable never used",
+                    "field defined but not referenced",
+                ],
+            },
+            {
+                id: "depends-di",
+                category: "dependency-injection",
+                explanation: "FastAPI Depends() is the standard DI mechanism",
+                falsePositiveIndicators: [
+                    "unused function parameter",
+                    "parameter assigned but not used",
+                    "Depends should be called directly",
+                ],
+            },
+            {
+                id: "async-no-await",
+                category: "performance",
+                explanation: "FastAPI async route handlers don't always need await - framework handles them",
+                falsePositiveIndicators: [
+                    "async function without await",
+                    "unnecessary async",
+                    "should be sync function",
+                ],
+            },
+            {
+                id: "sqlalchemy-text",
+                category: "sql-injection",
+                explanation: "SQLAlchemy text() with bound parameters is safe from SQL injection",
+                falsePositiveIndicators: [
+                    "raw SQL query",
+                    "SQL injection risk with text()",
+                    "use ORM instead of raw SQL",
+                ],
+            },
+            {
+                id: "os-environ-module",
+                category: "performance",
+                explanation: "os.environ at module level is standard Python configuration pattern",
+                falsePositiveIndicators: [
+                    "os.environ should not be at module level",
+                    "environment variable read at import time",
+                ],
+            },
+            {
+                id: "bare-except-logging",
+                category: "error-handling",
+                explanation: "Bare except with logging is acceptable in background tasks and cleanup code",
+                falsePositiveIndicators: [
+                    "bare except clause",
+                    "too broad exception clause",
+                    "catch specific exceptions",
+                ],
+            },
+        ];
+    }
+    detectAffectedAreas(files) {
+        const areas = super.detectAffectedAreas(files);
+        // FastAPI-specific areas
+        if (files.some((f) => f.includes("/routers/") || f.includes("/routes/") || f.includes("/endpoints/"))) {
+            areas.push("🛤️ API Endpoints");
+        }
+        if (files.some((f) => f.includes("/agent/") || f.includes("agent.py"))) {
+            areas.push("🤖 AI Agent");
+        }
+        if (files.some((f) => f.includes("/clients/") || f.includes("client.py"))) {
+            areas.push("🔗 External Clients");
+        }
+        if (files.some((f) => f.includes("/models/") || f.includes("/schemas/") || f.includes("models.py") || f.includes("schemas.py"))) {
+            areas.push("📊 Data Models");
+        }
+        if (files.some((f) => f.includes("/dependencies/") || f.includes("deps.py"))) {
+            areas.push("💉 Dependencies");
+        }
+        if (files.some((f) => f.includes("/crud/") || f.includes("crud.py"))) {
+            areas.push("🗄️ CRUD");
+        }
+        return [...new Set(areas)];
+    }
+    getPriorityRules() {
+        return [
+            // Critical: Auth/security
+            {
+                pattern: /\/(auth|security|permissions)\//,
+                priority: "critical",
+                reason: "Auth/Security",
+            },
+            {
+                pattern: /middleware\.py$/,
+                priority: "critical",
+                reason: "Middleware",
+            },
+            // High: API routes and agent
+            {
+                pattern: /\/routers\/.*\.py$/,
+                priority: "high",
+                reason: "API router",
+            },
+            {
+                pattern: /\/routes\/.*\.py$/,
+                priority: "high",
+                reason: "API route",
+            },
+            {
+                pattern: /\/endpoints\/.*\.py$/,
+                priority: "high",
+                reason: "API endpoint",
+            },
+            {
+                pattern: /\/agent\/.*\.py$/,
+                priority: "high",
+                reason: "AI Agent logic",
+            },
+            {
+                pattern: /main\.py$/,
+                priority: "high",
+                reason: "Application entry point",
+            },
+            // High: Dependencies and services
+            {
+                pattern: /\/dependencies\/.*\.py$/,
+                priority: "high",
+                reason: "DI dependency",
+            },
+            {
+                pattern: /\/services\/.*\.py$/,
+                priority: "high",
+                reason: "Service layer",
+            },
+            // Normal: Models, schemas, CRUD
+            {
+                pattern: /\/models\/.*\.py$/,
+                priority: "normal",
+                reason: "Data model",
+            },
+            {
+                pattern: /\/schemas\/.*\.py$/,
+                priority: "normal",
+                reason: "Pydantic schema",
+            },
+            {
+                pattern: /\/crud\/.*\.py$/,
+                priority: "normal",
+                reason: "CRUD operation",
+            },
+            // Low: Tests
+            {
+                pattern: /test_.*\.py$/,
+                priority: "low",
+                reason: "Test file",
+            },
+            {
+                pattern: /_test\.py$/,
+                priority: "low",
+                reason: "Test file",
+            },
+            {
+                pattern: /conftest\.py$/,
+                priority: "low",
+                reason: "Test fixture",
+            },
+            ...super.getPriorityRules(),
+        ];
+    }
+    isCriticalModule(filePath) {
+        if (super.isCriticalModule(filePath))
+            return true;
+        const fastapiCriticalPatterns = [
+            /\/(auth|security|permissions)\//,
+            /middleware\.py$/,
+        ];
+        return fastapiCriticalPatterns.some((p) => p.test(filePath));
+    }
+    extractContextFlags(files) {
+        const baseFlags = super.extractContextFlags(files);
+        return {
+            ...baseFlags,
+            apiEndpointsChanged: files.some((f) => f.includes("/routers/") || f.includes("/routes/") || f.includes("/endpoints/")),
+            agentChanged: files.some((f) => f.includes("/agent/") || f.includes("agent.py")),
+        };
+    }
+}
+//# sourceMappingURL=fastapi.js.map
+;// CONCATENATED MODULE: ./dist/frameworks/vanilla.js
+
+/**
+ * Vanilla TypeScript/JavaScript Framework Implementation
+ * 특정 프레임워크가 감지되지 않은 프로젝트에 대한 기본 룰과 패턴
+ */
+class VanillaFramework extends BaseFramework {
+    name = "vanilla";
+    getReviewInstructions() {
+        return `
+FRAMEWORK: TypeScript/JavaScript
+BEST_PRACTICES:
+  types:
+    - avoid_any: true
+    - use_proper_types: true
+    - prefer_interfaces_for_objects: true
+    - use_type_guards: true
+  async:
+    - handle_promise_rejections: true
+    - use_async_await_over_then: true
+    - avoid_callback_hell: true
+  errors:
+    - throw_typed_errors: true
+    - use_custom_error_classes: true
+    - include_error_context: true
+  null_safety:
+    - check_null_undefined: true
+    - use_optional_chaining: true
+    - use_nullish_coalescing: true
+  code_quality:
+    - single_responsibility: true
+    - avoid_deep_nesting: true
+    - prefer_pure_functions: true
+    - meaningful_names: true
+COMMON_FALSE_POSITIVES:
+  - Intentional any for third-party library compatibility
+  - Type assertions for known safe operations
+  - Empty catch blocks with explicit comments
+  - Console statements in CLI tools are acceptable
+`.trim();
+    }
+    getFalsePositivePatterns() {
+        return [
+            {
+                id: "ts-empty-catch",
+                category: "error-handling",
+                explanation: "Empty catch blocks with comments may be intentional",
+                falsePositiveIndicators: [
+                    "empty catch block",
+                    "swallowing errors",
+                ],
+            },
+            {
+                id: "ts-console-cli",
+                category: "logging",
+                explanation: "Console statements in CLI tools and scripts are acceptable",
+                falsePositiveIndicators: [
+                    "remove console.log",
+                    "use proper logger",
+                ],
+            },
+        ];
+    }
+    detectAffectedAreas(files) {
+        const areas = super.detectAffectedAreas(files);
+        // Vanilla project common patterns
+        if (files.some((f) => f.includes("/utils/") || f.includes("/helpers/"))) {
+            areas.push("🔧 Utilities");
+        }
+        if (files.some((f) => f.includes("/lib/") || f.includes("/core/"))) {
+            areas.push("📚 Core Library");
+        }
+        if (files.some((f) => f.includes("/types/") || f.includes(".d.ts"))) {
+            areas.push("📝 Type Definitions");
+        }
+        if (files.some((f) => f.includes("/config/") || f.includes(".config."))) {
+            areas.push("⚙️ Configuration");
+        }
+        if (files.some((f) => f.includes("/scripts/") || f.includes("/bin/"))) {
+            areas.push("📜 Scripts");
+        }
+        return [...new Set(areas)];
+    }
+    getPriorityRules() {
+        return [
+            // Critical: Core/lib code
+            {
+                pattern: /\/(core|lib)\/.*\.(ts|js)$/,
+                priority: "high",
+                reason: "Core library code",
+            },
+            // High: Type definitions
+            {
+                pattern: /\.d\.ts$/,
+                priority: "high",
+                reason: "Type definitions",
+            },
+            // Normal: Utils
+            {
+                pattern: /\/(utils|helpers)\/.*\.(ts|js)$/,
+                priority: "normal",
+                reason: "Utility functions",
+            },
+            // Normal: Scripts
+            {
+                pattern: /\/(scripts|bin)\/.*\.(ts|js)$/,
+                priority: "normal",
+                reason: "Script file",
+            },
+            ...super.getPriorityRules(),
+        ];
+    }
+    isCriticalModule(filePath) {
+        // For vanilla projects, rely on base critical patterns
+        return super.isCriticalModule(filePath);
+    }
+    extractContextFlags(files) {
+        const baseFlags = super.extractContextFlags(files);
+        return {
+            ...baseFlags,
+            typesChanged: files.some((f) => f.includes("/types/") || f.endsWith(".d.ts")),
+            coreChanged: files.some((f) => f.includes("/core/") || f.includes("/lib/")),
+            scriptsChanged: files.some((f) => f.includes("/scripts/") || f.includes("/bin/")),
+        };
+    }
+}
+//# sourceMappingURL=vanilla.js.map
+;// CONCATENATED MODULE: ./dist/frameworks/index.js
+/**
+ * Framework exports and auto-registration
+ */
+// Base framework
+
+// Framework implementations
+
+
+
+
+
+
+// Framework service
+
+// Framework detector
+
+// Import for auto-registration
+
+
+
+
+
+
+
+/**
+ * Register all frameworks automatically
+ */
+let registered = false;
+function registerAllFrameworks() {
+    if (registered)
+        return;
+    registered = true;
+    FrameworkRegistry.register(new NestJSFramework());
+    FrameworkRegistry.register(new NextJSFramework());
+    FrameworkRegistry.register(new ReactFramework());
+    FrameworkRegistry.register(new ExpressFramework());
+    FrameworkRegistry.register(new FastAPIFramework());
+    FrameworkRegistry.register(new VanillaFramework());
+}
+//# sourceMappingURL=index.js.map
+;// CONCATENATED MODULE: ./dist/core/review-engine.js
+
+
+
+
+
+
 /**
  * Run a full PR review
  *
@@ -50606,46 +51571,39 @@ function formatReviewBody(result, analysis, modelId) {
  */
 async function runReview(options) {
     logger.section("Dialectic PR Review");
-    // 1. Privacy Guard
-    const privacyGuard = new PrivacyGuard();
-    privacyGuard.displayDisclaimer();
-    // 2. Load config
+    // 0. 프레임워크 등록 보장
+    registerAllFrameworks();
+    // 1. Load config
     const configLoader = new ConfigLoader();
     const repoPath = process.cwd();
     const config = await configLoader.load(repoPath, options.configPath);
-    // 3. Adapters
-    const claudeAdapter = new ClaudeAdapter(options.anthropicApiKey, config.model);
-    const githubAdapter = new GitHubAdapter(options.githubToken);
-    // 4. Core components
-    const excludeFilter = new ExcludeFilter(config.exclude_patterns);
-    const smartFilter = new SmartFilter();
-    const frameworkDetector = new FrameworkDetector();
-    const prAnalyzer = new PRAnalyzer(excludeFilter, smartFilter, frameworkDetector);
-    const strategySelector = new StrategySelector();
-    // 5. PR info
+    // 2. Create components
+    const { privacyGuard, claudeAdapter, githubAdapter, prAnalyzer, strategySelector, rulesLoader, frameworkService, } = createReviewComponents(options, config);
+    // 3. Privacy Guard
+    privacyGuard.displayDisclaimer();
+    // 4. PR info
     const prInfo = {
         owner: options.owner,
         repo: options.repo,
         pullNumber: options.pullNumber,
         baseBranch: options.baseBranch,
-        headBranch: "",
     };
-    // 6. Fetch PR data
+    // 5. Fetch PR data
     logger.info("📥 Fetching PR data from GitHub...");
     const diff = await githubAdapter.getPRDiff(prInfo);
     const prFiles = await githubAdapter.getPRFiles(prInfo);
-    // 7. Secrets validation
+    // 6. Secrets validation
     privacyGuard.validateNoSecrets(diff);
-    // 8. File transformation
+    // 7. File transformation
     const changedFiles = prFiles.map((f) => ({
         path: f.filename,
         content: f.patch || "",
         additions: f.additions,
         deletions: f.deletions,
     }));
-    // 9. PR analysis
-    const analysis = await prAnalyzer.analyze(diff, changedFiles, prInfo, repoPath);
-    // 10. Strategy selection
+    // 8. PR analysis
+    const analysis = await prAnalyzer.analyze(diff, changedFiles, repoPath);
+    // 9. Strategy selection
     const strategy = strategySelector.select(analysis);
     // Skip strategy — post warning and return early
     if (strategy.name === "skip") {
@@ -50676,27 +51634,28 @@ async function runReview(options) {
             posted,
         };
     }
-    // 11. CLAUDE.md 자동 감지
+    // 10. CLAUDE.md 자동 감지
     const conventions = await configLoader.loadClaudeMd(repoPath);
-    // 11b. guardrails.json 자동 감지
+    // 11. guardrails.json 자동 감지
     const guardrails = await configLoader.loadGuardrails(repoPath);
-    // 11c. FP 패턴 조합 (builtin + framework - disabled + project)
-    const rulesLoader = new ProjectRulesLoader();
+    // 12. FP 패턴 조합 (builtin + framework - disabled + project)
     const basePatterns = rulesLoader.load(analysis.context.framework.name, guardrails.disabled_patterns || []);
     const allPatternsMap = new Map(basePatterns.map(p => [p.id, p]));
     for (const p of guardrails.patterns || []) {
         allPatternsMap.set(p.id, p); // 프로젝트 패턴이 빌트인 override
     }
     const allPatterns = Array.from(allPatternsMap.values());
-    // 12. Consensus Engine — pass language
+    // 13. Consensus Engine — pass language + framework instructions
     const consensusEngine = new ConsensusEngine(claudeAdapter, conventions, config.language);
-    const result = await consensusEngine.generateReview(analysis, strategy, allPatterns);
-    // 13. Log results
+    const frameworkInstance = frameworkService.getFramework(analysis.context.framework.name);
+    const frameworkInstructions = frameworkInstance?.getReviewInstructions();
+    const result = await consensusEngine.generateReview(analysis, strategy, allPatterns, frameworkInstructions);
+    // 14. Log results
     logger.section("Review Results");
     logger.info(`Total Issues: ${result.summary.totalIssues}`);
     logger.info(`Critical Issues: ${result.summary.criticalIssues}`);
     logger.info(`Assessment: ${result.summary.overallAssessment}`);
-    // 14. Format and post
+    // 15. Format and post
     const commentBody = formatReviewBody(result, analysis, config.model);
     let posted = false;
     if (!options.dryRun) {

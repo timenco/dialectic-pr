@@ -10,7 +10,7 @@ version: 1.0.0
 runtime: node >= 18
 language: typescript (ESM)
 deployment: github_action
-model: claude-sonnet-4-20250514
+model: claude-opus-4-8
 tests: 106 passing (7 suites)
 builtin_fp_patterns: 38
 ```

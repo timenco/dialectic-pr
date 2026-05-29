@@ -59,7 +59,7 @@ PR을 열면 자동으로 리뷰가 시작됩니다.
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
-  "model": "claude-opus-4-6",
+  "model": "claude-opus-4-8",
   "language": "ko",
   "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**"]
 }
@@ -78,7 +78,7 @@ PR을 열면 자동으로 리뷰가 시작됩니다.
 
 | 옵션 | 타입 | 기본값 | 설명 |
 |------|------|--------|------|
-| `model` | string | `claude-opus-4-6` | 사용할 Claude 모델 |
+| `model` | string | `claude-opus-4-8` | 사용할 Claude 모델 |
 | `language` | string | — | 리뷰 출력 언어 (ISO 639-1, 예: `ko`, `en`, `ja`) |
 | `exclude_patterns` | string[] | `[]` | 리뷰에서 제외할 글로브 패턴 |
 | `strategies` | object | — | PR 크기별 토큰 예산 오버라이드 |
@@ -235,7 +235,7 @@ CLAUDE.md                      # 프로젝트 컨텍스트 (자동 감지)
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/timenco/dialectic-pr/main/config/dialectic-pr-schema.json",
-  "model": "claude-opus-4-6",
+  "model": "claude-opus-4-8",
   "language": "ko",
   "exclude_patterns": ["**/*.lock", "**/dist/**", "**/coverage/**", "**/cdk.out/**"]
 }
