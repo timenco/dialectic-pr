@@ -22,6 +22,9 @@ jobs:
           fetch-depth: 0
 
       - name: Dialectic PR Review
-        uses: timenco/dialectic-pr@main
+        # Self-dogfood the PR's own built action (dist/) rather than @main, so a
+        # PR that fixes the action is validated by its own code — @main can't
+        # review a fix that isn't merged into @main yet (chicken-and-egg).
+        uses: ./
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
