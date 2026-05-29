@@ -215,7 +215,6 @@ export interface ReviewOutput {
 export interface ClaudeOptions {
   model?: string;
   maxTokens: number;
-  temperature?: number;
 }
 
 export interface TokenUsage {

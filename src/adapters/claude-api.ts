@@ -57,7 +57,6 @@ export class ClaudeAdapter {
         const requestParams: Anthropic.MessageCreateParams = {
           model,
           max_tokens: options.maxTokens,
-          temperature: options.temperature ?? 0,
           messages: [
             {
               role: "user",
