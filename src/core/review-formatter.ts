@@ -2,7 +2,7 @@ import { PRAnalysis, ReviewResult } from "./types.js";
 
 /**
  * Convert model ID to display name
- * e.g. "claude-opus-4-6" → "Claude Opus 4.6"
+ * e.g. "claude-opus-4-8" → "Claude Opus 4.8"
  */
 export function formatModelName(modelId: string): string {
   const match = modelId.match(/^claude-(\w+)-(\d+)-(\d+)/);

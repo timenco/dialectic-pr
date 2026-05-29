@@ -6,7 +6,7 @@
 // Constants
 // ============================================================================
 
-export const DEFAULT_MODEL = "claude-opus-4-6";
+export const DEFAULT_MODEL = "claude-opus-4-8";
 
 /** 보안/결제 등 크리티컬 모듈 경로 그룹 (regex 조합용) */
 export const CRITICAL_MODULE_PATH = "(auth|payments|billing|security)";
