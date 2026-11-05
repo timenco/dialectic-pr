@@ -53,6 +53,11 @@ async function run(): Promise<void> {
     core.setOutput("issues_count", String(result.summary.totalIssues));
     core.setOutput("critical_count", String(result.summary.criticalIssues));
     core.setOutput("review_posted", String(result.posted));
+    core.setOutput("review_complete", String(!result.summary.incompleteReason));
+
+    if (result.summary.incompleteReason) {
+      core.setFailed(`Review incomplete: ${result.summary.incompleteReason}`);
+    }
   } catch (error) {
     core.setFailed(error instanceof Error ? error.message : String(error));
   }

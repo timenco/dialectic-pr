@@ -148,11 +148,15 @@ export async function runReview(options: ReviewOptions): Promise<ReviewOutput> {
   if (!options.dryRun) {
     await githubAdapter.postComment(prInfo, commentBody);
     posted = true;
-    logger.success(
-      result.issues.length > 0
-        ? "✅ Review posted to GitHub"
-        : "✅ Review posted to GitHub (no issues found)"
-    );
+    if (result.summary.incompleteReason) {
+      logger.warn("⚠️ Incomplete review posted to GitHub");
+    } else {
+      logger.success(
+        result.issues.length > 0
+          ? "✅ Review posted to GitHub"
+          : "✅ Review posted to GitHub (no issues found)"
+      );
+    }
   } else {
     logger.info("🧪 Dry run mode - review not posted to GitHub");
   }

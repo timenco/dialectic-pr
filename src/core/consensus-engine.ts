@@ -6,10 +6,13 @@ import {
   ReviewSummary,
   ReviewMetadata,
   CachedSystemMessage,
+  ClaudeResponse,
   CodeReviewResponse,
 } from "./types.js";
 import { ClaudeAdapter } from "../adapters/claude-api.js";
 import { logger, safeError } from "../utils/logger.js";
+
+const PARSE_FAILED_ASSESSMENT = "Failed to parse review response";
 
 /**
  * Agent Consensus Instructions (cacheable - never changes)
@@ -135,7 +138,19 @@ export class ConsensusEngine {
     const parsed = this.parseReviewResponse(response.text);
 
     // 5. Generate summary
-    const summary = this.generateSummary(analysis, parsed.consensus);
+    const incompleteReason = this.detectIncompleteReason(
+      response,
+      parsed.consensus,
+      strategy.maxTokens
+    );
+    if (incompleteReason) {
+      logger.warn(`⚠️ Review incomplete: ${incompleteReason}`);
+    }
+    const summary = this.generateSummary(
+      analysis,
+      parsed.consensus,
+      incompleteReason
+    );
 
     // 6. Build metadata
     const metadata: ReviewMetadata = {
@@ -370,7 +385,7 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
           totalReviewed: 0,
           issuesRaised: 0,
           issuesFiltered: 0,
-          overallAssessment: "Failed to parse review response",
+          overallAssessment: PARSE_FAILED_ASSESSMENT,
         },
         debateNarrative: hasStepMarkers ? responseText : undefined,
       };
@@ -378,11 +393,30 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
   }
 
   /**
+   * 리뷰가 끝까지 완료되지 않았으면 그 이유를 돌려준다.
+   * 이슈 0건과 구분해야 한다 — 완료되지 않은 리뷰는 승인이 아니다.
+   */
+  private detectIncompleteReason(
+    response: ClaudeResponse,
+    consensus: CodeReviewResponse["consensus"],
+    maxTokens: number
+  ): string | undefined {
+    if (response.stopReason && response.stopReason !== "end_turn") {
+      return `응답이 끝까지 생성되지 않았습니다 (stop_reason: ${response.stopReason}, 출력 ${response.usage.outputTokens}/${maxTokens} 토큰).`;
+    }
+    if (consensus.overallAssessment === PARSE_FAILED_ASSESSMENT) {
+      return "리뷰 응답의 합의 결과를 해석하지 못했습니다.";
+    }
+    return undefined;
+  }
+
+  /**
    * Generate review summary
    */
   private generateSummary(
     analysis: PRAnalysis,
-    consensus: CodeReviewResponse["consensus"]
+    consensus: CodeReviewResponse["consensus"],
+    incompleteReason?: string
   ): ReviewSummary {
     // totalIssues = agreed issues count (from consensus JSON)
     const totalIssues = consensus.agreedIssues ?? 0;
@@ -390,7 +424,9 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
     // Use consensus assessment if available, otherwise generate
     let overallAssessment = consensus.overallAssessment;
 
-    if (!overallAssessment || overallAssessment === "Failed to parse review response") {
+    if (incompleteReason) {
+      overallAssessment = `⚠️ 리뷰 미완료: ${incompleteReason}`;
+    } else if (!overallAssessment) {
       if (totalIssues === 0) {
         overallAssessment = "✅ No significant issues found. Code looks good.";
       } else {
@@ -407,6 +443,7 @@ Now produce the full 3-step review. Write STEP 1, STEP 2, STEP 3 in natural lang
       mergeable: consensus.mergeable,
       priority: consensus.priority,
       fpRate: consensus.fpRate,
+      incompleteReason,
     };
   }
 }
