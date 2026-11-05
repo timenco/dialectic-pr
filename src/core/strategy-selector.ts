@@ -2,6 +2,13 @@ import { PRAnalysis, ReviewStrategy, StrategyName, STRATEGY_THRESHOLDS } from ".
 import { logger } from "../utils/logger.js";
 
 /**
+ * 응답 하나의 출력 예산. 적응형 사고가 켜진 모델은 사고 토큰도 max_tokens 안에서 쓴다.
+ * PR 이 클수록 읽을 것이 많으므로 큰 PR 의 예산을 줄이면 본문이 나오기 전에 예산이 끝난다.
+ * 크기별 차이는 예산이 아니라 instructions 로 둔다.
+ */
+const OUTPUT_TOKEN_BUDGET = 32000;
+
+/**
  * Strategy Selector
  * PR 크기와 컨텍스트에 따라 리뷰 전략 선택
  */
@@ -9,24 +16,24 @@ export class StrategySelector {
   private readonly strategies: Record<StrategyName, ReviewStrategy> = {
     small: {
       name: "small",
-      maxTokens: 16000,
+      maxTokens: OUTPUT_TOKEN_BUDGET,
       instructions: "Comprehensive review of all changes with detailed feedback.",
     },
     medium: {
       name: "medium",
-      maxTokens: 12000,
+      maxTokens: OUTPUT_TOKEN_BUDGET,
       instructions:
         "Focus on critical issues and potential bugs. Skip minor style suggestions.",
     },
     large: {
       name: "large",
-      maxTokens: 8000,
+      maxTokens: OUTPUT_TOKEN_BUDGET,
       instructions:
         "Focus only on critical security and bug issues. No style or minor suggestions.",
     },
     xlarge: {
       name: "xlarge",
-      maxTokens: 4000,
+      maxTokens: OUTPUT_TOKEN_BUDGET,
       instructions:
         "Critical security issues only. Very large PR - recommend splitting.",
     },

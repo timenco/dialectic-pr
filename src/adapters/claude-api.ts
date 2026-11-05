@@ -9,6 +9,9 @@ import {
 import { RetryHandler } from "./retry-handler.js";
 import { logger } from "../utils/logger.js";
 
+/** 비스트리밍 요청이 출력 예산을 다 쓸 때도 끊기지 않도록 SDK 기본 10분보다 길게 둔다 */
+const REQUEST_TIMEOUT_MS = 15 * 60 * 1000;
+
 /**
  * Claude API Adapter
  * Anthropic Claude API 클라이언트 with Prompt Caching
@@ -23,6 +26,7 @@ export class ClaudeAdapter {
   ) {
     this.client = new Anthropic({
       apiKey: this.apiKey,
+      timeout: REQUEST_TIMEOUT_MS,
     });
     this.retryHandler = new RetryHandler({
       maxRetries: 3,
@@ -114,6 +118,7 @@ export class ClaudeAdapter {
         return {
           text,
           usage,
+          stopReason: response.stop_reason,
         };
       } catch (error) {
         if (error instanceof Anthropic.APIError) {

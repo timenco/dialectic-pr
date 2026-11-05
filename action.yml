@@ -30,6 +30,8 @@ outputs:
     description: "Critical issues found"
   review_posted:
     description: "Whether the review was posted"
+  review_complete:
+    description: "Whether the review finished; false also fails the check"
 
 runs:
   using: "node20"

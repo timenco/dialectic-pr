@@ -23,6 +23,10 @@ export function extractConsensusData(result: ReviewResult): {
   let verdict = result.summary.verdict || "";
   const fpRate = result.summary.fpRate || "—";
 
+  if (result.summary.incompleteReason) {
+    verdict = "INCOMPLETE";
+  }
+
   // Fallback inference if not provided
   if (!verdict) {
     if (result.summary.totalIssues === 0) verdict = "APPROVE";
@@ -102,7 +106,7 @@ export function formatReviewBody(result: ReviewResult, analysis: PRAnalysis, mod
   lines.push(`- **영향 영역**: ${areas}`);
 
   // Consensus line with verdict emoji
-  const verdictEmoji = verdict === "APPROVE" ? "✅ LGTM" : verdict === "REQUEST_CHANGES" ? "🔴 Changes Requested" : "💬 Needs Discussion";
+  const verdictEmoji = verdict === "INCOMPLETE" ? "⚠️ 리뷰 미완료" : verdict === "APPROVE" ? "✅ LGTM" : verdict === "REQUEST_CHANGES" ? "🔴 Changes Requested" : "💬 Needs Discussion";
   lines.push(`- **Consensus**: ${verdictEmoji} (FP Rate: ${fpRate})`);
 
   // Flags
@@ -118,6 +122,12 @@ export function formatReviewBody(result: ReviewResult, analysis: PRAnalysis, mod
   lines.push("");
   lines.push("---");
   lines.push("");
+
+  if (result.summary.incompleteReason) {
+    lines.push(`> ⚠️ **이 리뷰는 완료되지 않았습니다.** ${result.summary.incompleteReason}`);
+    lines.push("> 아래 내용은 일부일 수 있으니 승인 근거로 쓰지 말고, 워크플로를 다시 실행해 주세요.");
+    lines.push("");
+  }
 
   // Debate narrative (STEP 1, 2, 3 including Executive Summary, Critical, Important, etc.) or fallback
   if (result.debateNarrative) {

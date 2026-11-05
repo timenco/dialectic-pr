@@ -21,6 +21,21 @@ describe("review-formatter", () => {
   });
 
   describe("extractConsensusData", () => {
+    it("should report INCOMPLETE even with no issues", () => {
+      const result = {
+        issues: [],
+        summary: {
+          totalIssues: 0,
+          criticalIssues: 0,
+          affectedAreas: [],
+          overallAssessment: "x",
+          incompleteReason: "잘림",
+        },
+      } as unknown as ReviewResult;
+
+      expect(extractConsensusData(result).verdict).toBe("INCOMPLETE");
+    });
+
     it("should extract existing verdict and fpRate", () => {
       const result: ReviewResult = {
         issues: [],

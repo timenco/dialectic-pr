@@ -60,28 +60,28 @@ describe("StrategySelector", () => {
       const analysis = createMockAnalysis(30000); // 30KB
       const strategy = selector.select(analysis);
       expect(strategy.name).toBe("small");
-      expect(strategy.maxTokens).toBe(16000);
+      expect(strategy.maxTokens).toBe(32000);
     });
 
     it("should select medium strategy for medium diffs (50-150KB)", () => {
       const analysis = createMockAnalysis(100000); // 100KB
       const strategy = selector.select(analysis);
       expect(strategy.name).toBe("medium");
-      expect(strategy.maxTokens).toBe(12000);
+      expect(strategy.maxTokens).toBe(32000);
     });
 
     it("should select large strategy for large diffs (150-200KB)", () => {
       const analysis = createMockAnalysis(180000); // 180KB
       const strategy = selector.select(analysis);
       expect(strategy.name).toBe("large");
-      expect(strategy.maxTokens).toBe(8000);
+      expect(strategy.maxTokens).toBe(32000);
     });
 
     it("should select xlarge strategy for very large diffs (200-800KB)", () => {
       const analysis = createMockAnalysis(500000); // 500KB
       const strategy = selector.select(analysis);
       expect(strategy.name).toBe("xlarge");
-      expect(strategy.maxTokens).toBe(4000);
+      expect(strategy.maxTokens).toBe(32000);
     });
 
     it("should select skip strategy for extremely large diffs (>800KB)", () => {
@@ -106,7 +106,7 @@ describe("StrategySelector", () => {
       const criticalStrategy = selector.select(criticalAnalysis);
 
       expect(criticalStrategy.maxTokens).toBeGreaterThan(normalStrategy.maxTokens);
-      expect(criticalStrategy.maxTokens).toBe(Math.floor(16000 * 1.5));
+      expect(criticalStrategy.maxTokens).toBe(Math.floor(32000 * 1.5));
     });
   });
 

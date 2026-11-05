@@ -209,3 +209,36 @@ No valid JSON block.
     expect(result.consensus.fpRate).toBe("0%");
   });
 });
+
+describe("ConsensusEngine incomplete review", () => {
+  const engine = new ConsensusEngine(null as any) as any;
+  const parsedOk = { overallAssessment: "✅ No significant issues found. Code looks good." };
+  const parseFailed = engine.parseReviewResponse("=== STEP 1\ncut off mid-sentence").consensus;
+  const response = (stopReason: string | null, outputTokens = 24000) => ({
+    text: "",
+    usage: { inputTokens: 1, outputTokens },
+    stopReason,
+  });
+  const analysis = { context: { affectedAreas: [] } };
+
+  it("flags a response cut off by max_tokens", () => {
+    expect(engine.detectIncompleteReason(response("max_tokens"), parsedOk, 24000)).toContain(
+      "stop_reason: max_tokens, 출력 24000/24000 토큰"
+    );
+  });
+
+  it("flags an unparseable response that ended normally", () => {
+    expect(engine.detectIncompleteReason(response("end_turn"), parseFailed, 24000)).toBeDefined();
+  });
+
+  it("does not flag a finished, parsed review", () => {
+    expect(engine.detectIncompleteReason(response("end_turn"), parsedOk, 24000)).toBeUndefined();
+  });
+
+  it("never reports no-issues for an incomplete review", () => {
+    const summary = engine.generateSummary(analysis, parseFailed, "잘림");
+
+    expect(summary.overallAssessment).toBe("⚠️ 리뷰 미완료: 잘림");
+    expect(summary.incompleteReason).toBe("잘림");
+  });
+});

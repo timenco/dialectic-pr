@@ -173,6 +173,8 @@ export interface ReviewSummary {
   mergeable?: boolean;
   priority?: string;
   fpRate?: string;
+  /** 리뷰가 끝까지 완료되지 않은 이유. 있으면 verdict 를 신뢰할 수 없다 */
+  incompleteReason?: string;
 }
 
 export interface ReviewMetadata {
@@ -227,6 +229,7 @@ export interface TokenUsage {
 export interface ClaudeResponse {
   text: string;
   usage: TokenUsage;
+  stopReason: string | null;
 }
 
 /**

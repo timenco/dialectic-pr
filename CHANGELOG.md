@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Incomplete reviews no longer look approved**: 응답이 잘리거나 합의 결과를 해석하지 못하면 `LGTM` 대신 `리뷰 미완료`를 표시하고 체크를 실패로 끝낸다.
+- **Output budget**: 전략별 출력 예산을 32,000 토큰으로 통일했다(크리티컬 모듈 48,000). 사고 토큰도 `max_tokens`를 쓰는데 큰 PR 예산이 더 작아 본문이 나오지 못했다.
+
 ### Changed
 - **3-Step Dialectic Output**: 리뷰 출력이 STEP 1 (Review Agent) → STEP 2 (Dev Agent Challenge) → STEP 3 (Final Consensus) 구조로 변경
 - **Review Format**: 📊 메트릭 불릿 리스트, 📋 Executive Summary, 🔴/🟡 이슈 분류, ✅ 긍정적인 점, 📊 Final Verdict 포함
